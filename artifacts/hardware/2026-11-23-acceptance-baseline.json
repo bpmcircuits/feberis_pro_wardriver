@@ -1,0 +1,97 @@
+{
+  "test": "passive_hardware_acceptance",
+  "flipper_sd_tested": false,
+  "physical_cable_disconnect_tested": false,
+  "firmware": "0.3.0",
+  "initial_memory": [
+    1,
+    1,
+    8388608,
+    3070748,
+    3070748,
+    3014656,
+    195424,
+    195184,
+    172032,
+    5304064,
+    488,
+    10000,
+    0,
+    2048,
+    0
+  ],
+  "cases": [
+    {
+      "name": "invalid_crc_overlong_frame_and_arguments",
+      "status": "passed"
+    },
+    {
+      "name": "passive_full_band_1_pause_resume",
+      "status": "passed",
+      "detections": 22,
+      "observations": 22,
+      "bands": [
+        2
+      ]
+    },
+    {
+      "name": "passive_full_band_2_pause_resume",
+      "status": "passed",
+      "detections": 8,
+      "observations": 8,
+      "bands": [
+        5
+      ]
+    },
+    {
+      "name": "passive_full_band_0_pause_resume",
+      "status": "passed",
+      "detections": 27,
+      "observations": 27,
+      "bands": [
+        2,
+        5
+      ]
+    },
+    {
+      "name": "unique",
+      "status": "passed",
+      "unique": 13,
+      "detections": 29,
+      "observations": 13,
+      "filtered": 16
+    },
+    {
+      "name": "smart",
+      "status": "passed",
+      "unique": 12,
+      "detections": 27,
+      "observations": 12,
+      "filtered": 15
+    },
+    {
+      "name": "identical_retries_timeout_stop_preserves_queue_and_resume",
+      "status": "passed",
+      "retries": 3
+    },
+    {
+      "name": "storage_nack_preserves_uncommitted_records",
+      "status": "passed"
+    }
+  ],
+  "original_config_restored": true,
+  "final_state": {
+    "boot": 1425742289,
+    "session": 7,
+    "running": 0,
+    "paused": 0,
+    "scanning": 0,
+    "link_wait": 0,
+    "queued": 0,
+    "last_sequence": 105,
+    "committed": 105,
+    "elapsed_ms": 13937
+  },
+  "status": "failed",
+  "failure": "TimeoutError: GET_INFO: response timeout"
+}

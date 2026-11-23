@@ -1,0 +1,2 @@
+boot,session,bssid,ssid_hex,band,channel,auth,detection_count,observation_count,strongest_rssi,mean_rssi,last_rssi,first_seen_ms,last_seen_ms,best_fix_valid,best_lat,best_lon,last_fix_valid,last_lat,last_lon,metadata_change_count
+12345,1,02:00:00:00:00:01,54657374,2,1,[ESS],2,2,-60,-60.5,-61,1000,3000,0,,,1,52.0000000,21.0000000,0

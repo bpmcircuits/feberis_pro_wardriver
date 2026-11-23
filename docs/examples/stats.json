@@ -1,0 +1,12 @@
+{
+  "synthetic": true,
+  "scope": "session",
+  "unique_aps": 1,
+  "total_detections": 2,
+  "observations_saved": 2,
+  "observations_filtered": 0,
+  "gps_valid_observations": 1,
+  "gps_invalid_observations": 1,
+  "queue_overflows": 0,
+  "table_overflows": 0
+}

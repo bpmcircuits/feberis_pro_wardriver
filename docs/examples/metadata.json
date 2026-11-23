@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "synthetic": true,
+  "firmware": "0.3.1",
+  "protocol_revision": 2,
+  "boot": 12345,
+  "session": 1,
+  "mode": "SMART",
+  "started_utc": "2026-11-23 12:00:00",
+  "stopped_utc": "2026-11-23 12:01:00",
+  "interrupted": false,
+  "aggregates_complete": true
+}

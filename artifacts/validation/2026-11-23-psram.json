@@ -1,0 +1,26 @@
+{
+  "firmware": "0.3.0",
+  "target": "esp32c5",
+  "module": "ESP32-C5-WROOM-1U-N8R8",
+  "lcsc": "C51950748",
+  "esp_idf": "6.0.0",
+  "build": "passed",
+  "host_tests": {
+    "passed": 6,
+    "total": 6,
+    "asan": true,
+    "ubsan": true
+  },
+  "ap_capacity": 10000,
+  "index_capacity": 20000,
+  "observation_capacity": 2048,
+  "psram_storage_bytes": 5304064,
+  "internal_engine_bytes": 376,
+  "psram_mode": "quad",
+  "psram_clock_mhz": 40,
+  "binary_bytes": 803664,
+  "binary_sha256": "ecf13cd55b7c7cc1434d86a519e5284f73ccbf20bb33763400f73863484cf904",
+  "flashed": true,
+  "hardware_psram_verified": true,
+  "hardware_report": "artifacts/hardware/2026-11-23-psram.json"
+}

@@ -1,0 +1,3 @@
+boot,session,sequence,bssid,ssid_hex,utc,monotonic_ms,rssi,channel,band,latitude,longitude,altitude_m,hdop,satellites,gps_valid,reason_mask
+12345,1,1,02:00:00:00:00:01,54657374,,1000,-60,1,2,,,,,0,0,1
+12345,1,2,02:00:00:00:00:01,54657374,2026-11-23 12:00:02,3000,-61,1,2,52.0000000,21.0000000,100.0,1.0,8,1,32

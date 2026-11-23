@@ -1,0 +1,39 @@
+{
+  "firmware": "0.3.0",
+  "port": "/dev/cu.usbmodemflip_Tutel1",
+  "chip": "ESP32-C5 rev 1.0",
+  "flash_baud": 460800,
+  "uart_baud": 115200,
+  "flash_hash_verification": "passed",
+  "images": [
+    "bootloader",
+    "partition_table",
+    "application"
+  ],
+  "boot": 1768626498,
+  "protocol_revision": 2,
+  "memory": {
+    "storage_ready": 1,
+    "psram_initialized": 1,
+    "psram_total_bytes": 8388608,
+    "psram_free_bytes": 3070748,
+    "psram_minimum_free_bytes": 3070748,
+    "psram_largest_free_block": 3014656,
+    "internal_free_bytes": 195424,
+    "internal_minimum_free_bytes": 195184,
+    "internal_largest_free_block": 172032,
+    "storage_reserved_bytes": 5304064,
+    "ap_record_bytes": 488,
+    "ap_capacity": 10000,
+    "ap_count": 0,
+    "queue_capacity": 2048,
+    "queued": 0
+  },
+  "running": false,
+  "gps_driver_ready": true,
+  "wifi_driver_ready": true,
+  "ping": "passed",
+  "gps_fix_observed_in_boot_capture": true,
+  "rf_scan_tested": false,
+  "flipper_sd_tested": false
+}

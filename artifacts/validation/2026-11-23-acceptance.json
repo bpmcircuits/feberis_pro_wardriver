@@ -1,0 +1,49 @@
+{
+  "firmware": "0.3.1",
+  "target": "esp32c5",
+  "module": "ESP32-C5-WROOM-1U-N8R8",
+  "esp_idf": "6.0.0",
+  "build": "passed",
+  "binary_bytes": 804480,
+  "binary_sha256": "538de2564b82eda4ccf34e98360d9f92dbd86e9f90798067fd890955756388aa",
+  "host_tests": {
+    "passed": 7,
+    "total": 7,
+    "asan": true,
+    "ubsan": true
+  },
+  "clang_analyzer": {
+    "modules": 5,
+    "diagnostics": 0
+  },
+  "flashed": true,
+  "flash_hashes_verified": true,
+  "hardware_acceptance": {
+    "passed": 15,
+    "total": 15,
+    "report": "artifacts/hardware/2026-11-23-acceptance.json"
+  },
+  "heap_soak": {
+    "cycles": 12,
+    "status": "passed",
+    "report": "artifacts/hardware/2026-11-23-soak.json"
+  },
+  "wigle_brand": "Sapsan",
+  "brand_update_changed_esp_binary": false,
+  "settings_restored": true,
+  "final_state": {
+    "boot": 2864359312,
+    "session": 1,
+    "running": 0,
+    "paused": 0,
+    "scanning": 0,
+    "link_wait": 0,
+    "queued": 0,
+    "last_sequence": 82,
+    "committed": 82,
+    "elapsed_ms": 36206
+  },
+  "flipper_sd_tested": false,
+  "wigle_server_import_tested": false,
+  "driving_tested": false
+}

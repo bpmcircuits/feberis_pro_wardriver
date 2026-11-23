@@ -1,0 +1,175 @@
+{
+  "test": "passive_hardware_acceptance",
+  "flipper_sd_tested": false,
+  "physical_cable_disconnect_tested": false,
+  "firmware": "0.3.1",
+  "initial_memory": [
+    1,
+    1,
+    8388608,
+    3070748,
+    3070748,
+    3014656,
+    195244,
+    195004,
+    172032,
+    5304064,
+    488,
+    10000,
+    0,
+    2048,
+    0
+  ],
+  "cases": [
+    {
+      "name": "invalid_crc_overlong_frame_and_arguments",
+      "status": "passed"
+    },
+    {
+      "name": "passive_full_band_1_pause_resume",
+      "status": "passed",
+      "detections": 17,
+      "observations": 17,
+      "bands": [
+        2
+      ]
+    },
+    {
+      "name": "passive_full_band_2_pause_resume",
+      "status": "passed",
+      "detections": 8,
+      "observations": 8,
+      "bands": [
+        5
+      ]
+    },
+    {
+      "name": "passive_full_band_0_pause_resume",
+      "status": "passed",
+      "detections": 27,
+      "observations": 27,
+      "bands": [
+        2,
+        5
+      ]
+    },
+    {
+      "name": "unique",
+      "status": "passed",
+      "unique": 11,
+      "detections": 23,
+      "observations": 11,
+      "filtered": 12
+    },
+    {
+      "name": "smart",
+      "status": "passed",
+      "unique": 11,
+      "detections": 23,
+      "observations": 11,
+      "filtered": 12
+    },
+    {
+      "name": "full_sampling_limit",
+      "status": "passed",
+      "detections": 18,
+      "observations": 11
+    },
+    {
+      "name": "mode_changes_preserve_session_and_baselines",
+      "status": "passed"
+    },
+    {
+      "name": "gps_policy_invalid_then_recovered_without_stopping_wifi",
+      "status": "passed"
+    },
+    {
+      "name": "identical_retries_timeout_stop_preserves_queue_and_resume",
+      "status": "passed",
+      "retries": 3
+    },
+    {
+      "name": "storage_nack_preserves_uncommitted_records",
+      "status": "passed"
+    },
+    {
+      "name": "uart_460800",
+      "status": "passed",
+      "ping_roundtrips": 10
+    },
+    {
+      "name": "uart_921600",
+      "status": "passed",
+      "ping_roundtrips": 10
+    },
+    {
+      "name": "uart_115200",
+      "status": "passed",
+      "ping_roundtrips": 10
+    },
+    {
+      "name": "restart_with_pending_records_nvs_persists_and_stale_boot_rejected",
+      "status": "passed",
+      "queued_before_restart": 2,
+      "queued_after_restart": 0
+    }
+  ],
+  "memory_before_restart": [
+    1,
+    1,
+    8388608,
+    3070748,
+    3070748,
+    3014656,
+    195208,
+    193188,
+    172032,
+    5304064,
+    488,
+    10000,
+    6,
+    2048,
+    0
+  ],
+  "boot_unchanged_before_intentional_restart": true,
+  "final_memory": [
+    1,
+    1,
+    8388608,
+    3070748,
+    3070748,
+    3014656,
+    195244,
+    195004,
+    172032,
+    5304064,
+    488,
+    10000,
+    0,
+    2048,
+    0
+  ],
+  "crc_errors": 0,
+  "unique_records_in_host_journal": 153,
+  "csv_rows_checked": 146,
+  "duplicate_transmissions": 4,
+  "errors_observed": [
+    "ACK_TIMEOUT"
+  ],
+  "original_config_restored": true,
+  "final_state": {
+    "boot": 2864359312,
+    "session": 0,
+    "running": 0,
+    "paused": 0,
+    "scanning": 0,
+    "link_wait": 0,
+    "queued": 0,
+    "last_sequence": 0,
+    "committed": 0,
+    "elapsed_ms": 0
+  },
+  "status": "passed",
+  "duration_seconds": 113.47,
+  "local_binary_sha256": "538de2564b82eda4ccf34e98360d9f92dbd86e9f90798067fd890955756388aa"
+}

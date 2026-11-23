@@ -1,0 +1,51 @@
+menu "Feberis Pro"
+config FEB_FLIPPER_TX
+    int "ESP TX to Flipper RX (UART0)"
+    range 0 28
+    default 11
+config FEB_FLIPPER_RX
+    int "ESP RX from Flipper TX (UART0)"
+    range 0 28
+    default 12
+config FEB_FLIPPER_BAUD
+    int "Flipper UART baud"
+    range 9600 921600
+    default 115200
+config FEB_GPS_RX
+    int "ESP RX from GPS TX (UART1)"
+    range 0 28
+    default 14
+config FEB_GPS_TX
+    int "ESP TX to GPS RX (UART1)"
+    range 0 28
+    default 13
+config FEB_GPS_BAUD
+    int "GPS UART baud (receiver must already use this baud)"
+    range 9600 921600
+    default 115200
+config FEB_LED_GPIO
+    int "WS2812B data GPIO"
+    range 0 28
+    default 27
+config FEB_COUNTRY
+    string "Wi-Fi country code (set to deployment country)"
+    default "PL"
+config FEB_AP_CAPACITY
+    int "Maximum unique BSSID per session (no eviction; stops when full)"
+    range 64 12000
+    default 10000
+    help
+        Records and a 50%-loaded hash index are allocated once in PSRAM.
+        Missing or insufficient PSRAM disables scanning without silently reducing capacity.
+config FEB_OBSERVATION_CAPACITY
+    int "Maximum queued observations in PSRAM"
+    range 32 8192
+    default 2048
+    help
+        Bounded volatile queue retained during UART disconnection until durable ACK.
+        Together with the AP table this must fit in detected PSRAM.
+config FEB_MAX_APS
+    int "Maximum AP records per scan"
+    range 16 512
+    default 128
+endmenu

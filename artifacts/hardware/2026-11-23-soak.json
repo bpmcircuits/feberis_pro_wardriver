@@ -1,0 +1,134 @@
+{
+  "test": "passive_heap_soak",
+  "flipper_sd_tested": false,
+  "physical_cable_disconnect_tested": false,
+  "firmware": "0.3.1",
+  "samples": [
+    {
+      "cycle": 1,
+      "internal_free": 195208,
+      "internal_minimum": 194300,
+      "psram_free": 3070748,
+      "storage_reserved": 5304064
+    },
+    {
+      "cycle": 2,
+      "internal_free": 195208,
+      "internal_minimum": 194172,
+      "psram_free": 3070748,
+      "storage_reserved": 5304064
+    },
+    {
+      "cycle": 3,
+      "internal_free": 195208,
+      "internal_minimum": 194056,
+      "psram_free": 3070748,
+      "storage_reserved": 5304064
+    },
+    {
+      "cycle": 4,
+      "internal_free": 195208,
+      "internal_minimum": 194056,
+      "psram_free": 3070748,
+      "storage_reserved": 5304064
+    },
+    {
+      "cycle": 5,
+      "internal_free": 195208,
+      "internal_minimum": 194056,
+      "psram_free": 3070748,
+      "storage_reserved": 5304064
+    },
+    {
+      "cycle": 6,
+      "internal_free": 195208,
+      "internal_minimum": 194056,
+      "psram_free": 3070748,
+      "storage_reserved": 5304064
+    },
+    {
+      "cycle": 7,
+      "internal_free": 195208,
+      "internal_minimum": 194056,
+      "psram_free": 3070748,
+      "storage_reserved": 5304064
+    },
+    {
+      "cycle": 8,
+      "internal_free": 195208,
+      "internal_minimum": 194056,
+      "psram_free": 3070748,
+      "storage_reserved": 5304064
+    },
+    {
+      "cycle": 9,
+      "internal_free": 195208,
+      "internal_minimum": 194056,
+      "psram_free": 3070748,
+      "storage_reserved": 5304064
+    },
+    {
+      "cycle": 10,
+      "internal_free": 195208,
+      "internal_minimum": 194056,
+      "psram_free": 3070748,
+      "storage_reserved": 5304064
+    },
+    {
+      "cycle": 11,
+      "internal_free": 195208,
+      "internal_minimum": 194056,
+      "psram_free": 3070748,
+      "storage_reserved": 5304064
+    },
+    {
+      "cycle": 12,
+      "internal_free": 195208,
+      "internal_minimum": 194056,
+      "psram_free": 3070748,
+      "storage_reserved": 5304064
+    }
+  ],
+  "stats": {
+    "total_detections": 82,
+    "unique_aps": 11,
+    "observations_saved": 82,
+    "observations_filtered": 0,
+    "gps_valid_observations": 82,
+    "gps_invalid_observations": 0,
+    "wifi_2g_aps": 11,
+    "wifi_5g_aps": 0,
+    "open_aps": 0,
+    "secured_aps": 11,
+    "scan_cycles": 12,
+    "scan_errors": 0,
+    "uart_retransmissions": 0,
+    "uart_dropped_frames": 0,
+    "storage_errors": 0,
+    "queue_overflows": 0,
+    "table_overflows": 0,
+    "queued": 0,
+    "committed": 82,
+    "free_heap": 3265956,
+    "minimum_free_heap": 3264804
+  },
+  "crc_errors": 0,
+  "unique_records_in_host_journal": 82,
+  "csv_rows_checked": 82,
+  "original_config_restored": true,
+  "final_state": {
+    "boot": 2864359312,
+    "session": 1,
+    "running": 0,
+    "paused": 0,
+    "scanning": 0,
+    "link_wait": 0,
+    "queued": 0,
+    "last_sequence": 82,
+    "committed": 82,
+    "elapsed_ms": 36206
+  },
+  "status": "passed",
+  "duration_seconds": 40.01,
+  "local_binary_sha256": "538de2564b82eda4ccf34e98360d9f92dbd86e9f90798067fd890955756388aa"
+}
