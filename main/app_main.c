@@ -19,6 +19,7 @@
 #include "gps_service.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "radio_capture.h"
 #include "sdkconfig.h"
 #include "status_led.h"
 #include <inttypes.h>
@@ -31,19 +32,34 @@
 #error "GPIO15 is reserved for PSRAM on ESP32-C5-WROOM-1U-N8R8"
 #endif
 
-#define VERSION "0.3.1"
+#define VERSION "0.4.0"
+#define INGEST_MAX_RECORDS 64
+#define INGEST_BUDGET_US 2000
 static wd_engine_t engine;
+
+typedef struct {
+    wifi_event_sta_scan_done_t done;
+    int64_t completed_ms;
+} scan_notice_t;
+typedef struct {
+    uint32_t radio_ms, ingest_ms, gap_ms, max_gap_ms, period_ms;
+    uint64_t ingest_cpu_us, metadata_hits, metadata_misses, pressure_ms;
+    size_t queue_high_water;
+} scan_metrics_t;
 
 typedef struct {
     uint32_t boot, sequence, scan_id, cycles, observations, acknowledged, rows;
     uint32_t no_gps, truncated, discarded;
     uint32_t interval_ms;
-    int64_t next_scan_ms, scan_started_ms;
+    int64_t next_scan_ms, scan_started_ms, scan_completed_ms, previous_start_ms;
+    int64_t pressure_started_ms;
+    bool gap_eligible;
+    scan_metrics_t metrics;
     bool running, scanning, error, pending_csv, paused, enhanced, link_wait;
     uint32_t session_counter;
     int64_t session_started_ms;
-    bool gps_ready, led_ready, wifi_ready, memory_ready, scan_timeout_reported;
-    wifi_ap_record_t records[CONFIG_FEB_MAX_APS];
+    bool gps_ready, led_ready, wifi_ready, memory_ready, scan_timeout_reported, capture_ready;
+    wifi_ap_record_t *records;
     uint16_t count, index, found;
     gps_fix_t scan_fix;
     delivery_t delivery;
@@ -123,6 +139,7 @@ static const char *auth_name(wifi_auth_mode_t auth) {
 }
 
 static void scan_finished(void) {
+    app.metrics.ingest_ms = (uint32_t)(now_ms() - app.scan_completed_ms);
     send_message("FBR1\t0\tSCAN_DONE\t%" PRIu32 "\t%" PRIu32 "\t%u\t%u\t%u", app.boot, app.scan_id,
                  app.found, app.count, app.found > app.count ? app.found - app.count : 0);
     app.count = app.index = 0;
@@ -180,6 +197,7 @@ static void send_next_record(void) {
 static void stop_session(const char *reason) {
     app.running = false;
     app.paused = false;
+    app.gap_eligible = false;
     if (app.scanning)
         esp_wifi_scan_stop();
     /* Preserve cancellation semantics for the old FAP; revision 2 drains reliably. */
@@ -219,6 +237,22 @@ static void send_stats(uint32_t id, bool lifetime) {
                  (unsigned)engine.queued, engine.committed, (unsigned)esp_get_free_heap_size(),
                  (unsigned)esp_get_minimum_free_heap_size());
 }
+static void send_scan_metrics(uint32_t id) {
+    radio_capture_stats_t c = radio_capture_stats();
+    send_message("FBR1\t%" PRIu32 "\tSCAN_METRICS\t%" PRIu32 "\t%" PRIu32 "\t%" PRIu32 "\t%" PRIu32
+                 "\t%u\t%" PRIu32 "\t%" PRIu32 "\t%" PRIu32 "\t%" PRIu32 "\t%" PRIu32 "\t%" PRIu64
+                 "\t%" PRIu64 "\t%" PRIu64 "\t%" PRIu64 "\t%" PRIu64 "\t%" PRIu64 "\t%" PRIu64
+                 "\t%u\t%" PRIu64 "\t%u\t%u\t%u\t%u",
+                 id, app.boot, engine.session, app.interval_ms, engine.config.dwell_ms,
+                 app.capture_ready, app.metrics.radio_ms, app.metrics.ingest_ms, app.metrics.gap_ms,
+                 app.metrics.max_gap_ms, app.metrics.period_ms, app.metrics.ingest_cpu_us,
+                 c.received, c.dropped, c.malformed, radio_capture_overflows(),
+                 app.metrics.metadata_hits, app.metrics.metadata_misses,
+                 (unsigned)app.metrics.queue_high_water, app.metrics.pressure_ms,
+                 (unsigned)(CONFIG_FEB_MAX_APS * sizeof(wifi_ap_record_t)),
+                 (unsigned)radio_capture_storage_bytes(),
+                 (unsigned)uxTaskGetStackHighWaterMark(NULL), (unsigned)CONFIG_FEB_MAX_APS);
+}
 static bool save_config(const wd_config_t *c) {
     nvs_handle_t h;
     if (nvs_open("wardrive", NVS_READWRITE, &h) != ESP_OK)
@@ -255,6 +289,8 @@ static void handle_command(char *line) {
         send_message("FBR1\t%" PRIu32 "\tINFO\t%s\t%" PRIu32 "\t%" PRIu32 "\t%s\t%u\t%u\t2", id,
                      VERSION, app.boot, engine.config.baud, CONFIG_FEB_COUNTRY,
                      (unsigned)engine.ap_capacity, (unsigned)engine.queue_capacity);
+    } else if (!strcmp(command, "GET_SCAN_METRICS") && count == 3) {
+        send_scan_metrics(id);
     } else if (!strcmp(command, "GET_MEMORY") && count == 3) {
         const uint32_t internal = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
         const uint32_t external = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
@@ -341,7 +377,7 @@ static void handle_command(char *line) {
             engine.config = c;
             reply(id, true, "SET_CONFIG");
             if (baud_changed) {
-                uart_wait_tx_done(UART_NUM_0, pdMS_TO_TICKS(200));
+                uart_wait_tx_done(UART_NUM_0, pdMS_TO_TICKS(1000));
                 uart_set_baudrate(UART_NUM_0, c.baud);
             }
         }
@@ -374,9 +410,11 @@ static void handle_command(char *line) {
         reply(id, true, "NACK");
     } else if (!strcmp(command, "PAUSE_SCAN") && count == 3) {
         app.paused = true;
+        app.gap_eligible = false;
         reply(id, true, "PAUSE_SCAN");
     } else if (!strcmp(command, "RESUME_SCAN") && count == 3) {
         app.paused = false;
+        app.gap_eligible = false;
         reply(id, true, "RESUME_SCAN");
     } else if (!strcmp(command, "RESET_STATS") && count == 3) {
         if (app.running || app.scanning || app.count || engine.queued)
@@ -386,8 +424,9 @@ static void handle_command(char *line) {
         else
             reply(id, true, "RESET_STATS");
     } else if (!strcmp(command, "START") || !strcmp(command, "START_SCAN")) {
-        uint32_t interval;
-        if (count != 4 || !wire_u32(f[3], &interval) || interval < 1000 || interval > 60000) {
+        uint32_t interval = 0;
+        if ((count != 3 && count != 4) || (count == 4 && !wire_u32(f[3], &interval)) ||
+            interval > 60000) {
             reply(id, false, "BAD_ARGUMENT");
         } else if (!app.memory_ready) {
             reply(id, false, "AP_MEMORY_UNAVAILABLE");
@@ -407,6 +446,12 @@ static void handle_command(char *line) {
                     return;
                 }
                 ++app.session_counter;
+                app.metrics = (scan_metrics_t){0};
+                app.previous_start_ms = 0;
+                app.scan_completed_ms = 0;
+                app.gap_eligible = false;
+                app.pressure_started_ms = 0;
+                radio_capture_reset_stats();
                 app.next_scan_ms = now_ms();
                 app.paused = false;
                 app.session_started_ms = now_ms();
@@ -415,7 +460,7 @@ static void handle_command(char *line) {
                                  engine.session);
             }
             app.running = true;
-            app.error = !app.led_ready || !app.gps_ready || !app.memory_ready;
+            app.error = !app.led_ready || !app.gps_ready || !app.memory_ready || !app.capture_ready;
             reply(id, true, "START");
         }
     } else if ((!strcmp(command, "STOP") || !strcmp(command, "STOP_SCAN")) && count == 3) {
@@ -479,16 +524,21 @@ static void wifi_scan_event(void *argument, esp_event_base_t base, int32_t id, v
     (void)base;
     (void)id;
     /* One scan in flight; overwrite prevents a full notification queue from losing completion. */
-    wifi_event_sta_scan_done_t *done = data;
-    xQueueOverwrite(app.scan_events, done);
+    scan_notice_t notice = {.done = *(wifi_event_sta_scan_done_t *)data, .completed_ms = now_ms()};
+    radio_capture_end();
+    xQueueOverwrite(app.scan_events, &notice);
 }
 
 static void process_scan_event(void) {
-    wifi_event_sta_scan_done_t done;
-    if (xQueueReceive(app.scan_events, &done, 0) != pdTRUE)
+    scan_notice_t notice;
+    if (xQueueReceive(app.scan_events, &notice, 0) != pdTRUE)
         return;
     app.scanning = false;
-    if (!app.running || done.status != 0) {
+    app.scan_completed_ms = notice.completed_ms;
+    app.metrics.radio_ms = (uint32_t)(notice.completed_ms - app.scan_started_ms);
+    app.metrics.ingest_cpu_us = 0;
+    radio_capture_drain(&engine.config);
+    if (!app.running || notice.done.status != 0) {
         esp_wifi_clear_ap_list();
         if (app.running) {
             ++engine.stats.scan_errors;
@@ -519,8 +569,7 @@ static void process_scan_event(void) {
     app.index = 0;
     if (app.found > app.count)
         app.truncated += app.found - app.count;
-    app.scan_fix = current_fix();
-    app.scan_started_ms = now_ms();
+    app.scan_fix = app.gps_ready ? gps_service_snapshot_at(notice.completed_ms) : (gps_fix_t){0};
     if (!app.count)
         scan_finished();
 }
@@ -537,22 +586,13 @@ static void advance_scanner(void) {
         send_message("FBR1\t0\tERROR\tSCAN_TIMEOUT");
         stop_session("SCAN_TIMEOUT");
     }
-    if (app.delivery.pending && !app.link_wait) {
-        delivery_action_t action = delivery_poll(&app.delivery, now_ms());
-        if (action == DELIVERY_RETRY) {
-            ++engine.stats.uart_retransmissions;
-            ++engine.lifetime.uart_retransmissions;
-            uart_write_bytes(UART_NUM_0, app.pending_frame, strlen(app.pending_frame));
-        }
-        if (action == DELIVERY_TIMEOUT) {
-            app.link_wait = true;
-            send_message("FBR1\t0\tERROR\tACK_TIMEOUT");
-        }
-    }
-    if (!app.delivery.pending && engine.queued && !app.link_wait)
-        send_next_record();
     /* Backpressure retains both the accepted queue and unread scan results in bounded RAM. */
-    if (app.count && app.index < app.count && engine.queued < engine.queue_capacity) {
+    int64_t slice_started_us = esp_timer_get_time();
+    unsigned processed = 0;
+    while (app.count && app.index < app.count && engine.queued < engine.queue_capacity &&
+           processed < INGEST_MAX_RECORDS &&
+           esp_timer_get_time() - slice_started_us < INGEST_BUDGET_US) {
+        ++processed;
         wifi_ap_record_t *r = &app.records[app.index];
         wd_detection_t d = {.ssid_len = strnlen((char *)r->ssid, 32),
                             .band = r->primary > 14 ? 5 : 2,
@@ -567,7 +607,29 @@ static void advance_scanner(void) {
                                    (r->phy_11ac ? 16 : 0) | (r->phy_11ax ? 32 : 0)};
         memcpy(d.bssid, r->bssid, 6);
         memcpy(d.ssid, r->ssid, d.ssid_len);
-        wd_result_t result = wd_detect(&engine, &d, app.scan_fix, (uint64_t)app.scan_started_ms);
+        const wd_radio_entry_t *sample =
+            app.capture_ready ? radio_capture_find(d.bssid, d.channel, app.scan_completed_ms)
+                              : NULL;
+        gps_fix_t fix = app.scan_fix;
+        int64_t detected_ms = app.scan_completed_ms;
+        uint32_t tags = 0;
+        if (sample) {
+            ++app.metrics.metadata_hits;
+            fix = sample->fix;
+            detected_ms = sample->beacon.received_ms;
+            d.rssi = sample->beacon.rssi;
+            if (sample->beacon.ssid_len || !d.ssid_len) {
+                d.ssid_len = sample->beacon.ssid_len;
+                memcpy(d.ssid, sample->beacon.ssid, d.ssid_len);
+            }
+        } else {
+            ++app.metrics.metadata_misses;
+            tags = WD_RX_UNVERIFIED;
+            /* An SDK aggregate has no per-frame timestamp. Preserve detection, never invent a
+             * location. */
+            fix.valid = false;
+        }
+        wd_result_t result = wd_detect_tagged(&engine, &d, fix, (uint64_t)detected_ms, tags);
         if (result == WD_TABLE_FULL || result == WD_SEQUENCE_FULL) {
             app.discarded += app.count - app.index;
             app.count = app.index = 0;
@@ -577,19 +639,28 @@ static void advance_scanner(void) {
         } else {
             if (result == WD_ACCEPTED) {
                 ++app.observations;
-                if (!wd_fix_valid(app.scan_fix, &engine.config))
+                if (!wd_fix_valid(fix, &engine.config))
                     ++app.no_gps;
             }
             if (++app.index == app.count && app.enhanced)
                 scan_finished();
         }
     }
+    if (processed)
+        app.metrics.ingest_cpu_us += (uint64_t)(esp_timer_get_time() - slice_started_us);
+    if (engine.queued > app.metrics.queue_high_water)
+        app.metrics.queue_high_water = engine.queued;
+    if (engine.queued == engine.queue_capacity && app.running) {
+        if (!app.pressure_started_ms)
+            app.pressure_started_ms = now_ms();
+    } else if (app.pressure_started_ms) {
+        app.metrics.pressure_ms += (uint64_t)(now_ms() - app.pressure_started_ms);
+        app.pressure_started_ms = 0;
+    }
     if (!app.enhanced && app.count && app.index == app.count && !engine.queued)
         scan_finished();
-    if (!app.running || app.paused)
-        return;
-    if (!app.count && !app.scanning && engine.queued < engine.queue_capacity &&
-        now_ms() >= app.next_scan_ms) {
+    if (app.running && !app.paused && !app.count && !app.scanning &&
+        engine.queued < engine.queue_capacity && now_ms() >= app.next_scan_ms) {
         wifi_scan_config_t config = {.show_hidden = true,
                                      .scan_type = engine.config.active ? WIFI_SCAN_TYPE_ACTIVE
                                                                        : WIFI_SCAN_TYPE_PASSIVE};
@@ -598,8 +669,12 @@ static void advance_scanner(void) {
             config.scan_time.active.max = engine.config.dwell_ms;
         } else
             config.scan_time.passive = engine.config.dwell_ms;
+        int64_t started = now_ms();
+        if (app.capture_ready)
+            radio_capture_begin(started);
         esp_err_t err = esp_wifi_scan_start(&config, false);
         if (err != ESP_OK) {
+            radio_capture_end();
             ++engine.stats.scan_errors;
             ++engine.lifetime.scan_errors;
             app.error = true;
@@ -608,11 +683,33 @@ static void advance_scanner(void) {
         } else {
             app.scanning = true;
             app.scan_timeout_reported = false;
-            app.scan_started_ms = now_ms();
+            app.scan_started_ms = started;
+            if (app.gap_eligible && app.scan_completed_ms) {
+                app.metrics.gap_ms = (uint32_t)(started - app.scan_completed_ms);
+                if (app.metrics.gap_ms > app.metrics.max_gap_ms)
+                    app.metrics.max_gap_ms = app.metrics.gap_ms;
+                app.metrics.period_ms = (uint32_t)(started - app.previous_start_ms);
+            }
+            app.previous_start_ms = started;
+            app.gap_eligible = true;
             ++app.scan_id;
             send_message("FBR1\t0\tSCAN_BEGIN\t%" PRIu32 "\t%" PRIu32, app.boot, app.scan_id);
         }
     }
+    if (app.delivery.pending && !app.link_wait) {
+        delivery_action_t action = delivery_poll(&app.delivery, now_ms());
+        if (action == DELIVERY_RETRY) {
+            ++engine.stats.uart_retransmissions;
+            ++engine.lifetime.uart_retransmissions;
+            uart_write_bytes(UART_NUM_0, app.pending_frame, strlen(app.pending_frame));
+        }
+        if (action == DELIVERY_TIMEOUT) {
+            app.link_wait = true;
+            send_message("FBR1\t0\tERROR\tACK_TIMEOUT");
+        }
+    }
+    if (!app.delivery.pending && engine.queued && !app.link_wait)
+        send_next_record();
 }
 
 static esp_err_t initialize_wifi(void) {
@@ -651,6 +748,9 @@ static esp_err_t initialize_wifi(void) {
     err = esp_wifi_start();
     if (err != ESP_OK)
         return err;
+    err = esp_wifi_set_ps(WIFI_PS_NONE);
+    if (err != ESP_OK)
+        return err;
     err = esp_wifi_set_country_code(CONFIG_FEB_COUNTRY, true);
     if (err != ESP_OK)
         return err;
@@ -668,7 +768,7 @@ static esp_err_t initialize_link(void) {
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .source_clk = UART_SCLK_DEFAULT,
     };
-    esp_err_t err = uart_driver_install(UART_NUM_0, 4096, 0, 20, &app.uart_events, 0);
+    esp_err_t err = uart_driver_install(UART_NUM_0, 4096, 4096, 20, &app.uart_events, 0);
     if (err != ESP_OK)
         return err;
     err = uart_param_config(UART_NUM_0, &config);
@@ -696,21 +796,28 @@ void app_main(void) {
     if (initialize_link() != ESP_OK)
         return;
     app.memory_ready = ap_memory_init(&engine);
+    app.records = heap_caps_calloc(CONFIG_FEB_MAX_APS, sizeof(*app.records),
+                                   MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    app.memory_ready = app.memory_ready && app.records;
     engine.config.baud = CONFIG_FEB_FLIPPER_BAUD;
-    app.scan_events = xQueueCreate(1, sizeof(wifi_event_sta_scan_done_t));
+    app.scan_events = xQueueCreate(1, sizeof(scan_notice_t));
     if (!app.scan_events) {
         send_message("FBR1\t0\tERROR\tNO_MEMORY");
         return;
     }
     esp_fill_random(&app.boot, sizeof(app.boot));
-    app.interval_ms = 2000;
+    app.interval_ms = 0;
     app.led_ready = status_led_init() == ESP_OK;
     app.gps_ready = gps_service_start() == ESP_OK;
     esp_err_t wifi_error = initialize_wifi();
     app.wifi_ready = wifi_error == ESP_OK;
+    app.capture_ready = app.wifi_ready && radio_capture_init() == ESP_OK;
     uart_set_baudrate(UART_NUM_0, engine.config.baud);
-    app.error = !app.led_ready || !app.gps_ready || !app.wifi_ready || !app.memory_ready;
+    app.error = !app.led_ready || !app.gps_ready || !app.wifi_ready || !app.memory_ready ||
+                !app.capture_ready;
     send_message("FBR1\t0\tREADY\t%s\t%" PRIu32, VERSION, app.boot);
+    if (!app.capture_ready)
+        send_message("FBR1\t0\tERROR\tRADIO_CAPTURE_INIT");
     if (!app.memory_ready)
         send_message("FBR1\t0\tERROR\tAP_MEMORY_UNAVAILABLE");
     if (!app.gps_ready)
@@ -734,11 +841,13 @@ void app_main(void) {
                 send_message("FBR1\t0\tERROR\tUART_RX");
             }
         }
-        int length = uart_read_bytes(UART_NUM_0, bytes, sizeof(bytes), pdMS_TO_TICKS(20));
+        int length = uart_read_bytes(UART_NUM_0, bytes, sizeof(bytes), 0);
         for (int i = 0; i < length; ++i)
             if (wire_feed(&app.reader, (char)bytes[i]))
                 handle_command(app.reader.data);
         process_scan_event();
+        if (app.capture_ready)
+            radio_capture_drain(&engine.config);
         advance_scanner();
         if (now_ms() - last_status >= 1000) {
             send_status(0);
@@ -752,5 +861,7 @@ void app_main(void) {
             }
             last_status = now_ms();
         }
+        /* Fine scheduling without a busy loop; GPS/Wi-Fi tasks have higher priority. */
+        vTaskDelay(1);
     }
 }

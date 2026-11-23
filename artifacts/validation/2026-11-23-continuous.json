@@ -1,0 +1,78 @@
+{
+  "firmware": "0.4.0",
+  "target": "esp32c5",
+  "sdk": "ESP-IDF 6.0.0",
+  "status": "passed",
+  "host_sanitizers": [
+    "address",
+    "undefined"
+  ],
+  "host_suites": [
+    {
+      "name": "core",
+      "status": "passed"
+    },
+    {
+      "name": "csv_and_protocol",
+      "status": "passed"
+    },
+    {
+      "name": "wardrive",
+      "status": "passed"
+    },
+    {
+      "name": "pipeline",
+      "status": "passed"
+    },
+    {
+      "name": "capacity",
+      "status": "passed"
+    },
+    {
+      "name": "ap_memory",
+      "status": "passed"
+    },
+    {
+      "name": "edges",
+      "status": "passed"
+    },
+    {
+      "name": "acquisition",
+      "status": "passed"
+    }
+  ],
+  "static_analysis": {
+    "tool": "clang --analyze",
+    "status": "passed",
+    "modules": [
+      "gps_history",
+      "radio",
+      "wardrive",
+      "nmea",
+      "wire",
+      "delivery",
+      "wigle"
+    ]
+  },
+  "firmware_build": "passed",
+  "binary_bytes": 802000,
+  "local_binary_sha256": "4ece850b1a8fbb5ed122c34e129c376d69bc0d35ef17935d68198a31cc810ee9",
+  "build_configuration": {
+    "IDF_TARGET": "esp32c5",
+    "ESP_DEFAULT_CPU_FREQ_MHZ": 240,
+    "FREERTOS_HZ": 1000,
+    "ESP_MAIN_TASK_STACK_SIZE": 12288,
+    "FEB_AP_CAPACITY": 10000,
+    "FEB_OBSERVATION_CAPACITY": 2048,
+    "FEB_MAX_APS": 512,
+    "SPIRAM_SPEED": 40,
+    "IEEE802154_ENABLED": false,
+    "ESP_WIFI_STA_DISCONNECTED_PM_ENABLE": false
+  },
+  "not_verified": [
+    "FAP/microSD durability",
+    "WiGLE server import",
+    "moving GNSS accuracy",
+    "extended dense RF operation"
+  ]
+}

@@ -1,4 +1,5 @@
 #include "gps_service.h"
+#include "core/gps_history.h"
 #include "driver/uart.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -8,6 +9,7 @@
 #include <string.h>
 
 static nmea_parser_t parser;
+static wd_gps_history_t history;
 static SemaphoreHandle_t mutex;
 static QueueHandle_t events;
 
@@ -29,7 +31,7 @@ static void gps_task(void *argument) {
                 xSemaphoreTake(mutex, portMAX_DELAY);
                 int64_t now = esp_timer_get_time() / 1000;
                 for (int i = 0; i < length; ++i)
-                    nmea_feed(&parser, (char)bytes[i], now);
+                    wd_gps_history_feed(&history, &parser, (char)bytes[i], now);
                 xSemaphoreGive(mutex);
                 remaining -= (size_t)length;
             }
@@ -39,6 +41,8 @@ static void gps_task(void *argument) {
             xQueueReset(events);
             xSemaphoreTake(mutex, portMAX_DELAY);
             memset(&parser, 0, sizeof(parser));
+            wd_gps_history_push(&history, (gps_fix_t){.age_ms = UINT32_MAX},
+                                esp_timer_get_time() / 1000);
             xSemaphoreGive(mutex);
         }
     }
@@ -69,9 +73,14 @@ esp_err_t gps_service_start(void) {
     return xTaskCreate(gps_task, "gps", 4096, NULL, 6, NULL) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
 }
 
-gps_fix_t gps_service_snapshot(void) {
+gps_fix_t gps_service_snapshot_at(int64_t at_ms) {
+    if (!mutex)
+        return wd_gps_history_at(&history, at_ms);
     xSemaphoreTake(mutex, portMAX_DELAY);
-    gps_fix_t fix = nmea_snapshot_max_age(&parser, esp_timer_get_time() / 1000, 10000);
+    gps_fix_t fix = wd_gps_history_at(&history, at_ms);
     xSemaphoreGive(mutex);
     return fix;
+}
+gps_fix_t gps_service_snapshot(void) {
+    return gps_service_snapshot_at(esp_timer_get_time() / 1000);
 }

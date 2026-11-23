@@ -4,7 +4,9 @@
 
 `main/app_main.c` adapts ESP-IDF Wi-Fi and the UART command/session loop.
 `main/gps_service.c` owns the independent GPS UART task; `status_led.c` drives RMT.
-`main/ap_memory.c` owns the one-time bounded PSRAM allocations.
+`main/ap_memory.c` owns AP/index/observation PSRAM allocations.
+`main/radio_capture.c` pairs passive beacon metadata with `core/gps_history.c`.
+Scan results and the bounded reception cache also use explicit PSRAM allocations.
 `main/core/` is portable C for NMEA, CRC framing, delivery, WiGLE and wardriving.
 `tests/` contains host C/Python checks. `tools/` contains protocol and hardware tools.
 `docs/FLIPPER_INTEGRATION.md` is the authoritative handoff to the separate FAP project.
@@ -32,6 +34,10 @@ for the module PSRAM; keep existing GPIO defaults.
 BSSID is the key; never merge by SSID. Preserve existing GPIO defaults and FBR1
 legacy compatibility. New protocol behavior must be documented for both endpoints.
 Changes to thresholds compare against the last accepted observation, not a raw hit.
+Driving defaults to START_SCAN with no extra gap (0 ms), passive 120 ms dwell.
+Do not trade reception coverage for a misleading subsecond full-sweep claim.
+Only use GPS solutions published at or before the received frame timestamp.
+SDK results without matching metadata stay unlocalized and carry RX_UNVERIFIED.
 
 ## Testing and changes
 

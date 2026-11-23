@@ -1,3 +1,12 @@
+# Architecture update: 0.4.0
+
+The current architecture is documented in English in
+[DOKUMENTACJA.md](DOKUMENTACJA.md#driving-scheduler). Continuous cycles replace the
+mandatory one-second post-batch minimum. A bounded passive reception path now
+pairs RSSI/timestamps with GNSS history, while the SDK supplies AP/security data.
+The scan buffer and reception cache use PSRAM; legacy protocol layouts remain.
+The original 0.3.1 audit below is retained as historical context.
+
 # Audyt, projekt i zakres implementacji 0.3.1
 
 ## Audyt stanu wejściowego

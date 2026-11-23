@@ -17,7 +17,8 @@ typedef enum {
     WD_INTERVAL = 8,
     WD_METADATA = 16,
     WD_GPS_RECOVERED = 32,
-    WD_SAMPLE = 64
+    WD_SAMPLE = 64,
+    WD_RX_UNVERIFIED = 128
 } wd_reason_t;
 typedef struct {
     uint32_t version, mode, band, active, dwell_ms, min_distance_m, rssi_delta_db;
@@ -88,3 +89,7 @@ double wd_distance(double lat1, double lon1, double lat2, double lon2);
 
 /* Reconnect may confirm only a durable checkpoint or the last actually transmitted head. */
 bool wd_resume_ack(wd_engine_t *e, uint32_t session, uint32_t sequence, uint32_t last_sent);
+
+/* Tags describe provenance; they never force an otherwise filtered observation. */
+wd_result_t wd_detect_tagged(wd_engine_t *e, const wd_detection_t *d, gps_fix_t fix, uint64_t now,
+                             uint32_t tags);

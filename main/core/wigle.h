@@ -3,8 +3,8 @@
 
 #define WIGLE_ROW_MAX 512
 #define WIGLE_METADATA                                                                             \
-    "WigleWifi-1.4,appRelease=0.3.1,model=Feberis "                                                \
-    "Pro,release=0.3.1,device=ESP32-C5,display=Flipper Zero,board=Feberis Pro,brand=Sapsan\n"
+    "WigleWifi-1.4,appRelease=0.4.0,model=Feberis "                                                \
+    "Pro,release=0.4.0,device=ESP32-C5,display=Flipper Zero,board=Feberis Pro,brand=Sapsan\n"
 #define WIGLE_COLUMNS                                                                              \
     "MAC,SSID,AuthMode,FirstSeen,Channel,RSSI,CurrentLatitude,CurrentLongitude,AltitudeMeters,"    \
     "AccuracyMeters,Type\n"

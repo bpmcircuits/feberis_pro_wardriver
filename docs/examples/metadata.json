@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "synthetic": true,
-  "firmware": "0.3.1",
+  "firmware": "0.4.0",
   "protocol_revision": 2,
   "boot": 12345,
   "session": 1,

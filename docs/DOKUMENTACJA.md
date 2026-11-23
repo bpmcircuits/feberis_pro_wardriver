@@ -1,6 +1,6 @@
 # Feberis Pro — Technical Documentation and User Guide
 
-This document covers firmware **0.3.1** and **FBR1 revision 2**.
+This document covers firmware **0.4.0** and **FBR1 revision 2**.
 Start with the [README](../README.md). Complete message and field definitions are
 in [FLIPPER_INTEGRATION.md](FLIPPER_INTEGRATION.md), currently in Polish.
 
@@ -50,11 +50,13 @@ The receiver must already transmit RMC and GGA at the configured speed.
 | Path | Role |
 | --- | --- |
 | `main/app_main.c` | Commands, sessions, scans, and UART0 transport coordination. |
-| `main/ap_memory.c` | One-time allocation of bounded PSRAM buffers. |
+| `main/ap_memory.c` | One-time AP/index/observation allocations in PSRAM. |
+| `main/radio_capture.c` | Receive-only metadata queue and per-scan PSRAM cache. |
 | `main/gps_service.c` | UART1 reception and GNSS parsing in an independent task. |
 | `main/status_led.c` | WS2812B control through RMT. |
 | `main/core/wardrive.*` | APs, observations, modes, aggregates, and the queue. |
 | `main/core/nmea.*` | NMEA validation, sentence synchronization, and fix snapshots. |
+| `main/core/gps_history.*`, `radio.*` | Bounded GNSS history, management IE parser, and reception cache. |
 | `main/core/wire.*`, `delivery.*` | Framing, CRC, ACK handling, and retries. |
 | `main/core/monotonic.h` | Safe monotonic time comparisons. |
 | `main/core/wigle.*` | WiGLE row generation and the metadata header template. |
@@ -117,14 +119,14 @@ Open `idf.py menuconfig` → **Feberis Pro**:
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `FEB_MAX_APS` | 128 | Maximum results retrieved from one scan; 16..512. |
+| `FEB_MAX_APS` | 512 | Maximum results retrieved from one scan; 16..1024. |
 | `FEB_AP_CAPACITY` | 10000 | Distinct BSSIDs per session; 64..12000. |
 | `FEB_OBSERVATION_CAPACITY` | 2048 | Pending observations in PSRAM; 32..8192. |
 | `FEB_COUNTRY` | PL | Regulatory channel selection for the deployment location. |
 | `FEB_FLIPPER_BAUD` | 115200 | Initial UART0 baud rate. |
 | `FEB_GPS_BAUD` | 115200 | GNSS baud rate, which must match the receiver. |
 
-The 128-result scan limit and the 10,000-AP session limit are independent.
+The 512-result scan limit and the 10,000-AP session limit are independent.
 ESP-IDF returns results ordered by RSSI; results omitted by the scan buffer limit
 increase `truncated`. A full session table raises `AP_TABLE_FULL` and stops the
 session.
@@ -135,6 +137,39 @@ UART/GPS buffers, and task stacks remain in internal memory. If PSRAM is missing
 or allocation fails, UART diagnostics remain available and `START_SCAN` returns
 `AP_MEMORY_UNAVAILABLE`. Capacity is never reduced silently. A failed hardware
 memory test may stop startup inside ESP-IDF.
+
+The scan-results array is also in PSRAM. A separate bounded reception cache uses
+`4 * FEB_MAX_APS * sizeof(wd_radio_entry_t)` bytes. `GET_MEMORY.storage_reserved`
+keeps its existing meaning (AP records, index, and observation queue only);
+`GET_SCAN_METRICS` reports the additional scan and capture allocations. Enlarging
+limits must leave room for Wi-Fi driver allocations and working memory.
+
+Existing developers must review their local `sdkconfig`: `sdkconfig.defaults`
+does not override explicit previous values. Preserve board-specific GPIO, country,
+and GNSS settings while selecting the documented CPU, tick, stack, scan-buffer,
+and power settings. NVS settings and radio session state are separate from the
+build configuration; flashing does not erase NVS.
+
+### Driving scheduler
+
+The default cycle gap is **0 ms**. The next asynchronous scan starts as soon as the
+previous batch has been ingested and the bounded observation queue has room.
+Ingestion runs in slices of at most 64 records or 2 ms. UART RX is polled without
+a 20 ms blocking read, and UART TX uses a 4096-byte ring. Delivery remains ordered
+and ACK still requires durable storage. A slow or disconnected receiver eventually
+applies backpressure; the firmware preserves queued records rather than silently
+throwing them away to maintain a scan-rate claim.
+
+The build explicitly selects the 240 MHz CPU, 1000 Hz FreeRTOS tick, a 12 KiB
+main-task stack, and no Wi-Fi modem sleep. The dedicated Wi-Fi build disables the
+unused 802.15.4 driver, which otherwise selects coexistence power management.
+Each loop yields for one tick. GNSS remains in its higher-priority task. Keep passive dwell at 120 ms initially: reducing it below common beacon
+intervals can increase missed networks. Complete scans still take seconds because
+one radio must visit each selected regulatory channel. The 0..60000 ms argument
+is an additional gap for diagnostics; 10-second gaps are unsuitable for driving.
+The SMART minimum observation gap and FULL sampling gap regulate saved records,
+not radio cycles. Existing FAPs that explicitly send 1000 or 2000 retain that pause
+until updated to send zero or omit the argument.
 
 ### NVS settings
 
@@ -171,7 +206,7 @@ session. The Flipper application prepares storage, negotiates `HELLO 2`, reads
 
 | Operation | Behavior |
 | --- | --- |
-| `START_SCAN interval_ms` | Start a session once the previous session is drained; 1000..60000 ms. |
+| `START_SCAN [gap_ms]` | Start after the previous session drains; extra post-batch pause 0..60000 ms, default 0. |
 | `PAUSE_SCAN` | Finish processing the current scan and prevent subsequent scans. |
 | `RESUME_SCAN` | Resume the same session. |
 | `STOP_SCAN` | Stop subsequent scans, retain the queue, and process the retrieved batch. |
@@ -215,15 +250,43 @@ and NAN rather than a fabricated 0,0 or a stale location. A genuine fix at 0,0 i
 valid. HDOP is not converted into accuracy in meters. Missing optional speed,
 course, altitude, or accuracy is represented as unavailable data.
 
-The position snapshot is frozen at scan completion. The standard scan result API
-does not provide a reception timestamp for each beacon. Movement therefore
-introduces an error related to scanning successive channels. The single radio
-scans both bands sequentially. The strongest measurement point is not the router's
-physical location.
+The official SDK scan API supplies AP, security, and PHY information. A parallel,
+receive-only management-frame callback timestamps valid beacons and probe
+responses with `esp_timer` at callback entry. It does not subscribe to data frames.
+The callback copies bounded metadata into a 256-entry internal queue; the main
+task associates each entry with a GNSS snapshot that was published **at or before**
+reception. A 64-snapshot ring preserves history through asynchronous scan
+completion. It never borrows a future fix, interpolates a route, or assigns the
+position at UART transmission to an earlier observation.
 
-The internal model supports arbitrary SSID bytes with an explicit length. The
-IDF scan API provides a NUL-terminated SSID, so an embedded NUL can truncate the
-name in the adapter. The BSSID remains the identity key.
+A PSRAM hash cache, keyed by BSSID and channel, retains the strongest captured
+frame per scan, with its original timestamp and matching GPS snapshot. Ties prefer
+a valid location. The cache has `4 * FEB_MAX_APS` slots and a maximum 50% load.
+Scan generations prevent cross-cycle reuse. Exact SSID bytes are parsed from
+validated information elements; hidden SSIDs retain length zero, and embedded
+NUL bytes survive. A nonempty name passively learned in the same scan may supplement
+a hidden beacon without changing the RSSI/location pair. BSSID remains the key.
+
+If an SDK result has no matching captured frame, it still updates AP statistics
+and can produce an observation. It is marked `NO_GPS` and reason/provenance bit
+128 (`RX_UNVERIFIED`), with no WiGLE row. Its monotonic time is the scan-completion
+fallback, not a claimed frame reception time. Metadata overflow and coverage are
+reported separately from observation loss. `RADIO_CAPTURE_INIT` flags an unavailable
+capture path; ordinary SDK scanning remains available with unlocalized results.
+
+These are software reception timestamps, not hardware PHY timestamps. GNSS
+receiver latency, fix frequency, and RF coverage still limit accuracy. The single
+radio scans both bands sequentially. The strongest measurement point is not the
+router's physical location.
+
+### Scan diagnostics
+
+`GET_SCAN_METRICS` is optional and preserves existing reply schemas. See the
+[FAP contract](FLIPPER_INTEGRATION.md#continuous-driving-profile-in-040) for field
+order and semantics. Use `radio_ms`, `ingest_ms`, `gap_ms`, and `period_ms` to
+distinguish radio work from software or receiver delays; use metadata hit/miss
+counts to assess reception provenance. A low `requested_gap_ms` alone is not a
+measurement of the resulting scan cadence.
 
 ## 8. UART, durability, and errors
 
@@ -294,9 +357,11 @@ fix; red — error. A green LED does not confirm a successful SD write.
 occupancy.
 
 Target build sizes: AP 488 B, observation 168 B, engine 376 B. Default PSRAM buffers
-reserve **5,304,064 B**. The hash index contains 20,000 entries and its load factor
-never exceeds 50%. Hardware checks confirmed 8 MiB PSRAM and approximately 3 MiB
-free PSRAM after allocation.
+reserve **5,304,064 B** for the AP model. In 0.4.0, the scan-results buffer
+adds **49,152 B** and the reception cache **327,680 B**, for **5,680,896 B** of
+fixed PSRAM application buffers. The hash index contains 20,000 entries and its
+load factor never exceeds 50%. Hardware checks confirmed 8 MiB PSRAM; remaining
+space is available for the SDK and runtime allocations.
 
 Host tests:
 
@@ -323,14 +388,19 @@ temporary journal and fsync before ACK. This does not test the Flipper's SD card
 ```sh
 python tools/stress_test.py /dev/cu.usbmodemflip_Tutel1 --output /tmp/feberis-acceptance.json
 python tools/stress_test.py /dev/cu.usbmodemflip_Tutel1 --soak-cycles 12 --output /tmp/feberis-soak.json
+python tools/scan_benchmark.py /dev/cu.usbmodemflip_Tutel1 --cycles 6 --output /tmp/feberis-cadence.json
 ```
 
-Version 0.3.1 passed 7/7 host suites, 15/15 hardware scenarios, and a 12-cycle memory
-check. Host tests also cover 10,000 APs, the 2,048-record queue, framing limits,
-invalid configuration, extreme timestamps, NMEA, and CSV. The full matrix is in
-[VALIDATION.md](VALIDATION.md) (Polish). Physical device results are in
-[HARDWARE_TEST_2026-11-23_ACCEPTANCE.md](HARDWARE_TEST_2026-11-23_ACCEPTANCE.md)
-(Polish). The archived `tools/hardware_test.py` targets protocol version 0.1.0.
+Version 0.4.0 passed 8/8 ASan/UBSan host suites, a target build, and Clang analysis
+of seven portable core modules. Physical acceptance passed 15 scenarios, with
+one GPS policy-recovery scenario not run because no qualifying fix was available
+at that point. Tests include malformed beacon IE fuzzing, binary/hidden SSIDs,
+GNSS history without future fixes, cache limits and generations, strongest-signal
+position pairing, provenance fallback, and existing 10,000-AP/2,048-queue cases.
+Current physical cadence and memory results are in the
+[0.4.0 validation report](HARDWARE_TEST_2026-11-23_CONTINUOUS.md) (English).
+Earlier matrices remain in [VALIDATION.md](VALIDATION.md) (Polish). The archived
+`tools/hardware_test.py` targets protocol version 0.1.0.
 
 ## 11. Validation boundaries
 

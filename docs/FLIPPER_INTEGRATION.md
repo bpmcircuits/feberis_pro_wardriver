@@ -1,4 +1,4 @@
-# Feberis 0.3.1 — kontrakt dla osobnego projektu aplikacji Flipper Zero
+# Feberis 0.4.0 — kontrakt dla osobnego projektu aplikacji Flipper Zero
 
 Ten plik jest zadaniem integracyjnym dla projektu FAP. W tym repozytorium jest
 wyłącznie firmware ESP32-C5 oraz narzędzia i testy hosta. Funkcje SD i GUI opisane
@@ -52,7 +52,7 @@ Poniższe pola pomijają `FBR1 id`. Liczby dziesiętne, kropka jako separator.
 | `GET_GPS` | `GPS valid utc lat lon altitude_m hdop satellites age_ms speed_kmh course_deg horizontal_accuracy_m` |
 | `GET_CONFIG` | `CONFIG` i 13 pól konfiguracji |
 | `SET_CONFIG` + 13 pól | `OK SET_CONFIG` lub błąd; pełna walidacja i zapis NVS |
-| `START_SCAN interval_ms` / `START interval_ms` | `OK START`; interwał 1000..60000; nowa sesja tylko gdy poprzednia opróżniona |
+| `START_SCAN [gap_ms]` / `START [gap_ms]` | `OK START`; dodatkowa przerwa 0..60000 ms, domyślnie 0; nowa sesja tylko gdy poprzednia opróżniona |
 | `STOP_SCAN` / `STOP` | `OK STOP`; zatrzymuje kolejne skany, zachowuje zaakceptowane rekordy i przetwarza już pobraną partię |
 | `PAUSE_SCAN` | `OK PAUSE_SCAN`; kończy bieżący skan i przetwarza jego wyniki, blokuje kolejne |
 | `RESUME_SCAN` | `OK RESUME_SCAN`; nie tworzy nowej sesji i nie wznawia błędu SD/łącza |
@@ -118,7 +118,7 @@ obowiązuje baud z NVS; w procedurze odzyskiwania sprawdź trzy obsługiwane pr�
 | 24..27 | speed_kmh, course_deg, horizontal_accuracy_m, phy_mask |
 
 Powody to maska: 1 FIRST, 2 DISTANCE, 4 RSSI, 8 INTERVAL, 16 METADATA,
-32 GPS_RECOVERED, 64 FULL_SAMPLE. `NO_GPS` reprezentuje fix_valid=0, współrzędne
+32 GPS_RECOVERED, 64 FULL_SAMPLE; 128 RX_UNVERIFIED jest flagą pochodzenia danych, nie wyzwalaczem zapisu. `NO_GPS` reprezentuje fix_valid=0, współrzędne
 obserwacji są wtedy `nan`. Nie zamieniaj ich na 0,0. UTC może być dostępne także
 bez poprawnej geolokalizacji, jeśli RMC zawiera świeży czas. Gdy brak UTC, zachowaj
 czas monotoniczny i brak czasu UTC w dzienniku; nie wstawiaj zegara PC jako GPS UTC.
@@ -126,14 +126,14 @@ Maska PHY: bit0 11b, bit1 11g, bit2 11n, bit3 11a, bit4 11ac, bit5 11ax.
 Auth używa opisów `[ESS]`, `[WEP][ESS]`, WPA/WPA2/WPA3/OWE; nierozpoznane
 wartości `[UNKNOWN][ESS]`, bez zgadywania zabezpieczeń.
 
-Pozycja i czas są zamrożone przy **zakończeniu skanu**, a nie przy zapisie SD czy
-retransmisji. Standardowe API skanowania nie podaje timestampu każdego beacona.
-Jeden skan obejmuje kolejno kanały obu pasm; podczas jazdy występuje błąd pozycji
-związany z czasem całego skanu. To ograniczenie tej implementacji. Nie przedstawiaj
-tej pozycji jako dokładnego punktu odbioru radiowego ani lokalizacji routera.
-SSID z API ESP-IDF jest zakończony NUL i może być ucięty przy osadzonym NUL;
-wewnętrzny model obsługuje długość i dowolne 32 bajty, ale nie odzyska brakujących
-bajtów z API skanowania. Pokazuj nietekstowe SSID bezpiecznie, nie jako format printf.
+W 0.4.0 pozycja i RSSI pochodzą z najsilniejszej odebranej ramki beacon/probe
+response, z timestampem callbacku odbiorczego i historycznym fixem GNSS dostępnym
+najpóźniej w tej chwili. Dane pozostają niezmienne podczas kolejkowania i retry.
+Wynik SDK bez dopasowanej ramki jest zachowany, ale ma fix_valid=0, nan oraz
+RX_UNVERIFIED; detected_monotonic_ms jest wtedy fallbackiem końca skanu.
+Nie przypisuj mu GPS z dashboardu. Szczegóły i metryki opisano w sekcji 0.4.0 niżej.
+Nazwy SSID są pobierane z walidowanych IE z jawną długością, również z osadzonym
+NUL. Fallback SDK może być ucięty przy NUL. Pokazuj bajty bezpiecznie, nie jako printf.
 
 `GET_AP slot` zwraca 29 pól:
 
@@ -310,7 +310,7 @@ Nie eksportuj UNKNOWN auth jako rozpoznanej metody szyfrowania. Przy użyciu csv
 sprawdź dekodowany wiersz niezależnym parserem i zgodność z polami obserwacji.
 
 ```csv
-WigleWifi-1.4,appRelease=0.3.1,model=Feberis Pro,release=0.3.1,device=ESP32-C5,display=Flipper Zero,board=Feberis Pro,brand=Sapsan
+WigleWifi-1.4,appRelease=0.4.0,model=Feberis Pro,release=0.4.0,device=ESP32-C5,display=Flipper Zero,board=Feberis Pro,brand=Sapsan
 MAC,SSID,AuthMode,FirstSeen,Channel,RSSI,CurrentLatitude,CurrentLongitude,AltitudeMeters,AccuracyMeters,Type
 ```
 
@@ -379,3 +379,77 @@ Nie przenoś wyników testu firmware 0.1.0 na nową wersję.
 Wyniki rzeczywistych prób: HARDWARE_TEST_2026-11-23_ACCEPTANCE.md.
 Pełna karta SD i brak odbiorcy są testowane przez NACK/symulowanego odbiorcę
 na komputerze. Nie jest to test zapisu SD ani GUI osobnego projektu FAP.
+
+
+## Continuous driving profile in 0.4.0
+
+This section is the required handoff to the separate FAP project. No FAP source
+is implemented in this repository. Existing FBR1 revision 2 field layouts remain
+compatible; the new command below is optional.
+
+- Send `START_SCAN 0` or `START_SCAN` without an argument for driving. Both mean
+  no deliberate post-batch delay. Legacy `START` accepts the same optional argument.
+  Valid values are 0..60000 ms, including subsecond values. Do not keep an old
+  hardcoded 1000/2000 ms minimum in the app: it still requests that delay from ESP.
+- The argument is an **extra gap after processing the completed scan**, not a scan
+  period. Display it as “Cycle gap”. Default to Continuous (0 ms); 50/100/250 ms
+  are optional. Keep long gaps in diagnostic settings, outside driving presets.
+- Keep passive dwell 120 ms initially. One radio visits channels sequentially;
+  complete 2.4/5 GHz sweeps still take seconds. Do not label 0 ms as an infinite
+  scan rate. Show the measured period if useful. SMART `min_gap_ms` and FULL
+  `full_gap_ms` limit repeated observations per BSSID, not radio scans.
+- The firmware now handles up to 512 SDK results per cycle (build range 16..1024),
+  with the array in PSRAM, in slices of at most 64 records or 2 ms. Scan acquisition
+  proceeds independently of normal per-record ACK latency while queue space is
+  available. Preserve durable ACK semantics. On queue pressure scanning waits;
+  never ACK before storage just to improve the displayed rate.
+- `OBSERVATION.reason_mask` adds bit 128 **RX_UNVERIFIED**. This provenance bit
+  never forces a record. It means no current-scan BSSID/channel reception metadata
+  was available; `fix_valid=0`, coordinates are NAN, and `csv_hex=-`. Retain the
+  record in the internal journal and exclude it from WiGLE export. Unknown reason
+  bits must not invalidate otherwise supported records.
+- Verified records pair the strongest captured beacon/probe response with the GNSS
+  snapshot published at or before its reception. Software callback timestamps,
+  receiver latency, GNSS sample rate, and position uncertainty still apply. A later
+  fix cannot retroactively locate an earlier record. SSID is a byte string, not C
+  text; the capture path preserves embedded NUL and hidden SSIDs.
+- `ERROR RADIO_CAPTURE_INIT` indicates degraded reception provenance. Wi-Fi SDK
+  scanning can continue with unlocalized results; show this diagnostic explicitly.
+  Capture-queue/cache overflow is metadata loss, separately counted from accepted
+  observation loss. Do not combine these counters.
+- Keep 115200 as the compatible connection rate. Offer explicit coordinated
+  460800/921600 negotiation; tests cover these rates, but the actual FAP and SD
+  throughput still need validation. Do not switch either endpoint unilaterally.
+
+`GET_SCAN_METRICS` returns exactly **26 tab-separated fields**, counting the
+`FBR1 id SCAN_METRICS` prefix:
+
+```text
+FBR1 id SCAN_METRICS boot session requested_gap_ms dwell_ms capture_ready
+radio_ms ingest_ms gap_ms max_gap_ms period_ms ingest_cpu_us
+captured dropped malformed cache_overflows metadata_hits metadata_misses
+queue_high_water backpressure_ms scan_buffer_bytes capture_cache_bytes
+main_stack_free scan_capacity
+```
+
+- Timing fields describe the last completed radio/ingestion batch and latest
+  consecutive scan start; they can refer to adjacent cycles while scanning.
+  `gap_ms` is completion-to-next-start time, including processing, the requested
+  gap, and any queue pressure. `period_ms` is start-to-start. Pause/resume resets
+  the timing anchor so a deliberate pause does not inflate the next measured gap.
+  First-cycle/unfinished fields may be zero. `ingest_cpu_us` accumulates actual
+  slice wall time; `ingest_ms` also includes waiting and scheduling.
+- `captured`, `dropped`, and `malformed` count received valid metadata frames,
+  queue drops, and rejected beacon/probe-response bodies. The cache has
+  `4 * scan_capacity` slots, with at most 50% occupied per scan. `cache_overflows`
+  counts rejected insert attempts. These are not observation-drop counters.
+- `metadata_hits/misses` count SDK results processed with/without matching metadata.
+  `queue_high_water` is accepted observations waiting for durable ACK.
+  `backpressure_ms` accumulates completed periods when that queue is full.
+- Counts/high-water marks reset on a new session. `scan_buffer_bytes` and
+  `capture_cache_bytes` are additional fixed PSRAM allocations;
+  `GET_MEMORY.storage_reserved` retains its old three-buffer meaning.
+  `main_stack_free` is the ESP-IDF stack high-water result in bytes.
+- The firmware uses 240 MHz CPU, a 1000 Hz RTOS tick, Wi-Fi power saving disabled,
+  and a 12 KiB main-task stack. This is a powered driving profile, not a low-power
+  stationary preset. No wire field or NVS configuration layout was removed.

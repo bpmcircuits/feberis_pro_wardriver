@@ -5,12 +5,16 @@ networks and recording their parameters alongside GNSS positions. A Flipper Zero
 controls the device over UART. The ESP32 scans, deduplicates BSSIDs, and prepares
 observations for storage by the Flipper application.
 
-Current version: **0.3.1**. Target module: **ESP32-C5-WROOM-1U-N8R8**,
+Current version: **0.4.0**. Target module: **ESP32-C5-WROOM-1U-N8R8**,
 LCSC **C51950748**, with 8 MiB flash and 8 MiB PSRAM.
 
 ## Features
 
 - Passive scans of the 2.4 GHz band, 5 GHz band, or both, including hidden SSIDs.
+- Continuous scanning by default: no intentional pause between completed cycles.
+- Up to **512 AP results per scan**, with bounded batch processing in PSRAM.
+- Passive beacon/probe-response timestamps paired with a bounded GNSS history;
+  exact SSID bytes, including embedded NUL, are preserved when captured.
 - Three recording modes: **SMART**, **FULL**, and **UNIQUE**.
 - AP identification by BSSID, RSSI aggregates, and network parameter change detection.
 - GPS/GNSS in an independent task: NMEA RMC/GGA, UTC, position, altitude, speed,
@@ -74,6 +78,23 @@ Use the correct port for your computer. The FAP application must release the UAR
 while flashing. Wiring, PSRAM, and configuration details are in the
 [technical documentation](docs/DOKUMENTACJA.md).
 
+## Driving configuration
+
+Use passive scanning, SMART mode, 120 ms channel dwell, and `START_SCAN 0`
+(or `START_SCAN` without an argument). The argument is an **extra pause after a
+completed batch**, not the duration of a scan. It now accepts 0..60000 ms;
+long pauses remain available for diagnostics or stationary use.
+The SMART 2000 ms minimum interval limits repeated records of the same BSSID;
+it does not slow the radio or delay first detections.
+
+The driving build uses the 240 MHz CPU, a 1 ms scheduler tick, disabled Wi-Fi
+modem sleep, a buffered UART transmitter, and ingestion slices capped at 64
+results or 2 ms. No scans overlap. The AP table stays at 10,000 entries and the
+observation queue at 2,048. `GET_SCAN_METRICS` exposes actual radio time, processing
+time, gaps, provenance coverage, and backpressure. See the
+[Flipper handoff](docs/FLIPPER_INTEGRATION.md#continuous-driving-profile-in-040)
+for the matching application change.
+
 ## Tests
 
 Host tests require a C compiler, CMake, and Python 3.10+; no device is required:
@@ -84,24 +105,37 @@ cmake --build build-host
 ctest --test-dir build-host --output-on-failure
 ```
 
-Version 0.3.1 passed **7/7 host test suites with ASan/UBSan**, **15/15 hardware
-acceptance scenarios**, and a 12-cycle memory stability check. Testing covered both
-bands, recording modes, GPS, retransmission, recovery, restart, and three UART
-baud rates. The [test report](docs/HARDWARE_TEST_2026-11-23_ACCEPTANCE.md) (Polish)
-distinguishes physical device results from simulations.
+Version 0.4.0 passed **8/8 host suites with ASan/UBSan**, a target firmware build,
+and Clang analysis of seven portable modules. The physical acceptance run passed
+15 scenarios; one GPS policy-recovery scenario was not run because its initial
+fix failed the configured quality threshold. Retransmission, restart, modes,
+both bands, and all three UART rates were exercised. A 12-cycle memory test
+showed constant free RAM and PSRAM after draining each batch.
+
+Measured local median cycle times improved from **2.99 to 1.70 s** (2.4 GHz) and
+**6.52 to 5.09 s** (both bands), comparing 0.3.1 with its 1000 ms minimum gap to
+0.4.0 with continuous scanning, at the same 120 ms passive dwell. This measures
+cadence, not comparative RF sensitivity or moving coverage. See the
+[0.4.0 validation report](docs/HARDWARE_TEST_2026-11-23_CONTINUOUS.md) for results
+and physical-test boundaries.
 
 ## Documentation
 
 - [Technical documentation and user guide](docs/DOKUMENTACJA.md) — English.
 - [UART protocol and Flipper integration](docs/FLIPPER_INTEGRATION.md) — Polish.
 - [Architecture, data model, and SMART algorithm](docs/ARCHITECTURE.md) — Polish.
-- [Test matrix and validation](docs/VALIDATION.md) — Polish.
+- [0.4.0 tests and scan-cadence measurements](docs/HARDWARE_TEST_2026-11-23_CONTINUOUS.md) — English.
+- [Earlier test matrix and validation](docs/VALIDATION.md) — Polish.
 - [Example output files](docs/examples).
 
 ## Limitations
 
-Positions are assigned at scan completion, so movement introduces an error related
-to the time spent scanning channels. PSRAM is volatile: restarting clears pending
+Positions use the strongest captured beacon/probe response and the most recent
+GNSS solution already available at reception. GNSS latency and sample rate still
+limit accuracy. SDK results without matching reception metadata are retained as
+`NO_GPS` with provenance flag 128. One radio scans channels sequentially: a zero
+cycle gap does not make a complete dual-band sweep take less than a second.
+PSRAM is volatile: restarting clears pending
 records and aggregates. Reaching the AP capacity limit is reported explicitly.
 Observations without a valid location are excluded from WiGLE export.
 

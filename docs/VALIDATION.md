@@ -1,3 +1,9 @@
+# Validation 0.4.0 — continuous acquisition
+
+Current results, commands, timing measurements, and hardware limitations are in
+[HARDWARE_TEST_2026-11-23_CONTINUOUS.md](HARDWARE_TEST_2026-11-23_CONTINUOUS.md)
+(English). The 0.3.1 and earlier reports below are historical.
+
 # Walidacja 0.3.1 — test urządzenia i skrajnych przypadków, 2026-11-23
 
 Przeprowadzono 7/7 zestawów testów hosta z ASan/UBSan (PASS), docelową kompilację

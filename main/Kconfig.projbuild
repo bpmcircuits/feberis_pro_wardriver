@@ -46,6 +46,6 @@ config FEB_OBSERVATION_CAPACITY
         Together with the AP table this must fit in detected PSRAM.
 config FEB_MAX_APS
     int "Maximum AP records per scan"
-    range 16 512
-    default 128
+    range 16 1024
+    default 512
 endmenu

@@ -37,7 +37,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('request_id', type=int)
     parser.add_argument('command', choices=['HELLO', 'PING', 'STATUS', 'START', 'STOP', 'ACK', 'BAND',
-        'GET_INFO', 'GET_MEMORY', 'GET_STATUS', 'GET_GPS', 'GET_CONFIG', 'SET_CONFIG', 'GET_STATS',
+        'GET_SCAN_METRICS', 'GET_INFO', 'GET_MEMORY', 'GET_STATUS', 'GET_GPS', 'GET_CONFIG', 'SET_CONFIG', 'GET_STATS',
         'GET_AP', 'START_SCAN', 'STOP_SCAN', 'PAUSE_SCAN', 'RESUME_SCAN',
         'RESUME_LINK', 'RESET_STATS', 'NACK'])
     parser.add_argument('arguments', nargs='*')

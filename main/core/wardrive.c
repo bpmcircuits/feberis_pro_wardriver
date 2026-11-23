@@ -69,7 +69,8 @@ double wd_distance(double a, double b, double c, double d) {
         ++e->stats.field;                                                                          \
         ++e->lifetime.field;                                                                       \
     } while (0)
-wd_result_t wd_detect(wd_engine_t *e, const wd_detection_t *d, gps_fix_t fix, uint64_t now) {
+wd_result_t wd_detect_tagged(wd_engine_t *e, const wd_detection_t *d, gps_fix_t fix, uint64_t now,
+                             uint32_t tags) {
     if (!e->aps || !e->ap_index || !e->queue)
         return WD_NOT_INITIALIZED;
     if (d->ssid_len > 32)
@@ -191,7 +192,7 @@ wd_result_t wd_detect(wd_engine_t *e, const wd_detection_t *d, gps_fix_t fix, ui
                             .fix = fix,
                             .session = e->session,
                             .sequence = ++e->next_sequence,
-                            .reason = reason,
+                            .reason = reason | (tags & WD_RX_UNVERIFIED),
                             .detected_ms = now};
     ++e->queued;
     a->saved = true;
@@ -233,4 +234,8 @@ bool wd_resume_ack(wd_engine_t *e, uint32_t session, uint32_t sequence, uint32_t
     if (!o || sequence != o->sequence || sequence != last_sent)
         return false;
     return wd_ack(e, session, sequence);
+}
+
+wd_result_t wd_detect(wd_engine_t *e, const wd_detection_t *d, gps_fix_t fix, uint64_t now) {
+    return wd_detect_tagged(e, d, fix, now, 0);
 }

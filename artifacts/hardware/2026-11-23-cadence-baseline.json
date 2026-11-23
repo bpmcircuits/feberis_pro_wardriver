@@ -1,0 +1,139 @@
+{
+  "test": "passive_scan_cadence",
+  "cycles": 6,
+  "firmware": "0.3.1",
+  "profiles": [
+    {
+      "band": 1,
+      "gap_ms": 1000,
+      "supported": true,
+      "periods_ms": [
+        3040.8,
+        2989.83,
+        2980.12,
+        2989.95,
+        3030.27
+      ],
+      "median_period_ms": 2989.95,
+      "stats": {
+        "total_detections": 59,
+        "unique_aps": 14,
+        "observations_saved": 59,
+        "observations_filtered": 0,
+        "gps_valid_observations": 0,
+        "gps_invalid_observations": 59,
+        "wifi_2g_aps": 14,
+        "wifi_5g_aps": 0,
+        "open_aps": 0,
+        "secured_aps": 14,
+        "scan_cycles": 6,
+        "scan_errors": 0,
+        "uart_retransmissions": 0,
+        "uart_dropped_frames": 0,
+        "storage_errors": 0,
+        "queue_overflows": 0,
+        "table_overflows": 0,
+        "queued": 0,
+        "committed": 59,
+        "free_heap": 3265956,
+        "minimum_free_heap": 3264436
+      },
+      "memory": [
+        1,
+        1,
+        8388608,
+        3070748,
+        3070748,
+        3014656,
+        195208,
+        193688,
+        172032,
+        5304064,
+        488,
+        10000,
+        14,
+        2048,
+        0
+      ]
+    },
+    {
+      "band": 1,
+      "gap_ms": 0,
+      "supported": false
+    },
+    {
+      "band": 0,
+      "gap_ms": 1000,
+      "supported": true,
+      "periods_ms": [
+        6445.32,
+        6520.13,
+        6500.12,
+        6589.98,
+        6589.99
+      ],
+      "median_period_ms": 6520.13,
+      "stats": {
+        "total_detections": 80,
+        "unique_aps": 19,
+        "observations_saved": 80,
+        "observations_filtered": 0,
+        "gps_valid_observations": 0,
+        "gps_invalid_observations": 80,
+        "wifi_2g_aps": 15,
+        "wifi_5g_aps": 4,
+        "open_aps": 0,
+        "secured_aps": 19,
+        "scan_cycles": 6,
+        "scan_errors": 0,
+        "uart_retransmissions": 0,
+        "uart_dropped_frames": 0,
+        "storage_errors": 0,
+        "queue_overflows": 0,
+        "table_overflows": 0,
+        "queued": 0,
+        "committed": 139,
+        "free_heap": 3265956,
+        "minimum_free_heap": 3263820
+      },
+      "memory": [
+        1,
+        1,
+        8388608,
+        3070748,
+        3070748,
+        3014656,
+        195208,
+        193072,
+        172032,
+        5304064,
+        488,
+        10000,
+        19,
+        2048,
+        0
+      ]
+    },
+    {
+      "band": 0,
+      "gap_ms": 0,
+      "supported": false
+    }
+  ],
+  "original_config_restored": true,
+  "final_state": {
+    "boot": 1709810355,
+    "session": 2,
+    "running": 0,
+    "paused": 0,
+    "scanning": 0,
+    "link_wait": 0,
+    "queued": 0,
+    "last_sequence": 139,
+    "committed": 139,
+    "elapsed_ms": 38800
+  },
+  "status": "passed",
+  "duration_seconds": 61.82,
+  "local_binary_sha256": "538de2564b82eda4ccf34e98360d9f92dbd86e9f90798067fd890955756388aa"
+}

@@ -230,9 +230,10 @@ def run(d, result):
 
     try:
         d.command('PING', expected=('OK', 'PONG'))
-        d.command('START_SCAN', 999, expected=('ERR', 'BAD_ARGUMENT'))
+        d.command('START_SCAN', 60001, expected=('ERR', 'BAD_ARGUMENT'))
         d.command('START_SCAN', 4294967296, expected=('ERR', 'BAD_ARGUMENT'))
-        bad = bytearray(encode(['FBR1', '50', 'START_SCAN', '1000']))
+        d.command('START_SCAN', -1, expected=('ERR', 'BAD_ARGUMENT'))
+        bad = bytearray(encode(['FBR1', '50', 'START_SCAN', '0']))
         bad[-2] = ord('0') if bad[-2] != ord('0') else ord('1')
         d.link.write(bad)
         d.link.write(b'X' * 2000 + b'\n')
@@ -244,12 +245,22 @@ def run(d, result):
         assert list(map(int, d.command('GET_CONFIG')[3:])) == original
         passed('invalid_crc_overlong_frame_and_arguments')
 
+        configure(mode=1, band=1, full_gap_ms=0)
+        for arguments in ((), (50,), (999,), (60000,)):
+            d.command('START_SCAN', *arguments, expected=('OK', 'START'))
+            metrics = d.command('GET_SCAN_METRICS', expected=('SCAN_METRICS',))
+            assert len(metrics) == 26 and int(metrics[5]) == (arguments[0] if arguments else 0)
+            d.command('PAUSE_SCAN', expected=('OK', 'PAUSE_SCAN'))
+            d.settle(running=1, paused=1)
+            d.stop()
+        passed('continuous_default_subsecond_and_diagnostic_gaps')
+
         for band in (1, 2, 0):
             configure(mode=1, band=band, full_gap_ms=0)
             before = d.cycles
             old_obs = d.observations
             d.bands.clear()
-            d.command('START_SCAN', 1000, expected=('OK', 'START'))
+            d.command('START_SCAN', 0, expected=('OK', 'START'))
             d.command('RESET_STATS', expected=('ERR', 'BUSY'))
             d.command('BAND', 'AUTO', expected=('ERR', 'BUSY'))
             d.wait(lambda: d.cycles > before)
@@ -259,6 +270,8 @@ def run(d, result):
             assert s['observations_saved'] == s['total_detections'] and not s['observations_filtered']
             assert s['gps_valid_observations'] + s['gps_invalid_observations'] == s['observations_saved']
             assert not s['scan_errors'] and not s['queue_overflows']
+            metrics = d.command('GET_SCAN_METRICS', expected=('SCAN_METRICS',))
+            assert len(metrics) == 26 and int(metrics[7]) == 1 and int(metrics[18]) > 0
             if band:
                 assert d.bands <= {2 if band == 1 else 5}
             cycles = d.cycles
@@ -273,7 +286,7 @@ def run(d, result):
         for mode in (2, 0):
             configure(mode=mode, band=1)
             before = d.cycles
-            d.command('START_SCAN', 1000, expected=('OK', 'START'))
+            d.command('START_SCAN', 0, expected=('OK', 'START'))
             d.wait(lambda: d.cycles >= before + 3)
             d.command('PAUSE_SCAN', expected=('OK', 'PAUSE_SCAN'))
             d.settle(running=1, paused=1)
@@ -296,7 +309,7 @@ def run(d, result):
 
         configure(mode=1, band=1, full_gap_ms=60000)
         cycle = d.cycles
-        d.command('START_SCAN',1000,expected=('OK','START'))
+        d.command('START_SCAN',0,expected=('OK','START'))
         d.wait(lambda: d.cycles>=cycle+2)
         d.command('PAUSE_SCAN',expected=('OK','PAUSE_SCAN'))
         d.settle(running=1,paused=1)
@@ -308,7 +321,7 @@ def run(d, result):
         # Switch modes within one session without resetting AP baselines or counts.
         configure(mode=1,band=1,full_gap_ms=0)
         cycle=d.cycles
-        d.command('START_SCAN',1000,expected=('OK','START'))
+        d.command('START_SCAN',0,expected=('OK','START'))
         d.wait(lambda:d.cycles>cycle)
         d.command('PAUSE_SCAN',expected=('OK','PAUSE_SCAN'))
         state=d.settle(running=1,paused=1)
@@ -335,7 +348,7 @@ def run(d, result):
             configure(mode=0,band=1,gps_max_hdop_x10=1,gps_max_age_ms=100)
             cycle=d.cycles
             csv_before=d.csv_rows
-            d.command('START_SCAN',1000,expected=('OK','START'))
+            d.command('START_SCAN',0,expected=('OK','START'))
             d.wait(lambda:d.cycles>cycle)
             d.command('PAUSE_SCAN',expected=('OK','PAUSE_SCAN'))
             d.settle(running=1,paused=1)
@@ -357,7 +370,7 @@ def run(d, result):
         d.auto_ack = False
         obs = d.observations
         duplicate = d.duplicates
-        d.command('START_SCAN', 1000, expected=('OK', 'START'))
+        d.command('START_SCAN', 0, expected=('OK', 'START'))
         d.wait(lambda: d.observations > obs)
         state = d.state()
         session = state['session']
@@ -366,11 +379,11 @@ def run(d, result):
         d.pump(2.3)
         stalled = d.state()
         assert stalled['link_wait'] and stalled['queued'] >= 1
-        d.command('START_SCAN', 1000, expected=('OK', 'START'))  # same session, no reset
+        d.command('START_SCAN', 0, expected=('OK', 'START'))  # same session, no reset
         assert d.state()['session'] == session
         d.command('STOP_SCAN', expected=('OK', 'STOP'))
         assert d.state()['queued'] >= stalled['queued']
-        d.command('START_SCAN', 1000, expected=('ERR', 'BUSY'))
+        d.command('START_SCAN', 0, expected=('ERR', 'BUSY'))
         d.command('RESUME_LINK', d.boot ^ 1, session, d.last_committed, expected=('ERR', 'SESSION_MISMATCH'))
         d.command('RESUME_LINK', d.boot, session, 4294967295, expected=('ERR', 'SEQUENCE_MISMATCH'))
         # The first record is durable on the host, its ACK was deliberately lost.
@@ -382,7 +395,7 @@ def run(d, result):
         configure(mode=1, band=1, full_gap_ms=0)
         d.auto_ack = d.commit_enabled = False
         obs = d.observations
-        d.command('START_SCAN', 1000, expected=('OK', 'START'))
+        d.command('START_SCAN', 0, expected=('OK', 'START'))
         d.wait(lambda: d.observations > obs)
         d.command('NACK', 'STORAGE', expected=('OK', 'NACK'))
         state = d.state()
@@ -408,7 +421,7 @@ def run(d, result):
             for _ in range(10):
                 d.command('PING', expected=('OK', 'PONG'))
             cycle = d.cycles
-            d.command('START_SCAN',1000,expected=('OK','START'))
+            d.command('START_SCAN',0,expected=('OK','START'))
             d.wait(lambda: d.cycles>cycle)
             d.stop()
             passed(f'uart_{baud}', ping_roundtrips=10)
@@ -419,7 +432,7 @@ def run(d, result):
         restart_config=list(map(int,d.command('GET_CONFIG')[3:]))
         d.auto_ack=False
         observations=d.observations
-        d.command('START_SCAN',1000,expected=('OK','START'))
+        d.command('START_SCAN',0,expected=('OK','START'))
         d.wait(lambda:d.observations>observations)
         old=d.state()
         assert old['queued']>0
@@ -477,7 +490,7 @@ def run_soak(d, result, cycles):
     samples=[]
     try:
         d.command('SET_CONFIG',*c,expected=('OK','SET_CONFIG'))
-        d.command('START_SCAN',1000,expected=('OK','START'))
+        d.command('START_SCAN',0,expected=('OK','START'))
         for i in range(cycles):
             before=d.cycles
             if i:
