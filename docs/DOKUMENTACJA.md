@@ -1,28 +1,28 @@
-# Feberis Pro — dokumentacja techniczna i instrukcja obsługi
+# Feberis Pro — Technical Documentation and User Guide
 
-Dokument dotyczy firmware **0.3.1** i protokołu **FBR1 revision 2**.
-Punktem wejścia do projektu jest [README](../README.md).
-Pełne definicje pól i komunikatów są w
-[FLIPPER_INTEGRATION.md](FLIPPER_INTEGRATION.md).
+This document covers firmware **0.3.1** and **FBR1 revision 2**.
+Start with the [README](../README.md). Complete message and field definitions are
+in [FLIPPER_INTEGRATION.md](FLIPPER_INTEGRATION.md), currently in Polish.
 
-## 1. Przeznaczenie i zakres
+## 1. Purpose and scope
 
-Feberis Pro wykrywa pobliskie AP Wi-Fi i łączy pomiary radiowe z aktualnymi danymi
-GNSS. Kluczem sieci jest BSSID. Tożsamość SSID nie powoduje połączenia różnych AP,
-a ponowne użycie BSSID nie stanowi dowodu stałej fizycznej tożsamości urządzenia.
+Feberis Pro discovers nearby Wi-Fi access points and associates radio measurements
+with current GNSS data. The network key is the BSSID. Matching SSIDs do not merge
+different APs, and BSSID reuse does not establish a permanent physical identity.
 
-ESP32-C5 odpowiada za radio, GPS, deduplikację, agregaty, konfigurację i transport.
-Flipper Zero steruje sesjami, prezentuje dane i ma zapisywać wyniki na microSD.
-Kod FAP jest w osobnym projekcie; znajdujący się tutaj kontrakt opisuje wymagane
-zachowanie aplikacji, a nie gotową implementację GUI i Storage API.
+The ESP32-C5 handles radio scanning, GPS, deduplication, aggregates, configuration,
+and transport. The Flipper Zero controls sessions, displays data, and is intended
+to save results to microSD. The FAP code lives in a separate project. The contract
+in this repository specifies its required behavior; the GUI and Storage API
+implementation belong to that separate project.
 
-## 2. Sprzęt i połączenia
+## 2. Hardware and wiring
 
-Moduł: **ESP32-C5-WROOM-1U-N8R8**, LCSC **C51950748**.
-Pamięć modułu: 8 MiB flash i 8 MiB Quad PSRAM. GNSS używany w projekcie:
-ATGM336H-6N-74, NMEA przez UART. Sygnalizacja: pojedyncza WS2812B.
+Module: **ESP32-C5-WROOM-1U-N8R8**, LCSC **C51950748**.
+Module memory: 8 MiB flash and 8 MiB Quad PSRAM. The project uses an
+ATGM336H-6N-74 GNSS receiver with NMEA over UART and a single WS2812B status LED.
 
-| Sygnał | GPIO ESP32-C5 | Domyślne parametry |
+| Signal | ESP32-C5 GPIO | Default settings |
 | --- | --- | --- |
 | ESP TX → Flipper RX | 11 | UART0, 115200, 8N1 |
 | ESP RX ← Flipper TX | 12 | UART0, 115200, 8N1 |
@@ -30,60 +30,62 @@ ATGM336H-6N-74, NMEA przez UART. Sygnalizacja: pojedyncza WS2812B.
 | ESP TX → GNSS RX | 13 | UART1, 115200, 8N1 |
 | WS2812B DIN | 27 | RMT, GRB |
 
-Wspólna masa, UART 3,3 V. Numery GPIO odnoszą się do ESP32, nie do numerów pinów
-złącza Flippera. Piny są konfigurowalne w `idf.py menuconfig` → **Feberis Pro**.
-Muszą być różne. **GPIO15 jest zajęte przez PSRAM**; kompilacja odrzuca przypisanie
-tego GPIO do UART lub LED. Inne zmiany wymagają sprawdzenia schematu płytki.
+Use a common ground and 3.3 V UART levels. GPIO numbers refer to the ESP32,
+not the Flipper connector pin numbers. Pins are configurable through
+`idf.py menuconfig` → **Feberis Pro** and must be distinct.
+**GPIO15 is reserved for PSRAM**; the build rejects assigning it to a UART or LED.
+Check the board schematic before choosing alternative pins.
 
-GPIO13/14 współdzielą natywne USB ESP32-C5. Przy wskazanym połączeniu GNSS
-programowanie odbywa się przez UART0, w tym przez USB–UART Flippera z DTR/RTS
-sterującymi download/reset. Aplikacja FAP musi wtedy zwolnić port.
-Firmware wyłącza zwykłą konsolę i logi bootloadera; komunikaty ROM/panic mogą
-nadal pojawić się na UART. Odbiornik ignoruje tekst bez poprawnej ramki i CRC.
+GPIO13/14 share the ESP32-C5 native USB interface. With the GNSS wiring above,
+programming uses UART0, including the Flipper USB–UART bridge with DTR/RTS
+controlling download/reset. The FAP application must release the port while
+flashing. Normal console output and bootloader logs are disabled; ROM/panic output
+may still appear on UART. Receivers discard text without a valid frame and CRC.
 
-Firmware nie zmienia baudrate ani zestawu zdań odbiornika GNSS. Moduł powinien
-już nadawać RMC oraz GGA z prędkością ustawioną w konfiguracji.
+The firmware does not reconfigure the GNSS receiver's baud rate or sentence set.
+The receiver must already transmit RMC and GGA at the configured speed.
 
-## 3. Struktura repozytorium
+## 3. Repository layout
 
-| Ścieżka | Rola |
+| Path | Role |
 | --- | --- |
-| `main/app_main.c` | Koordynacja komend, sesji, skanów i transmisji UART0. |
-| `main/ap_memory.c` | Jednorazowa, ograniczona alokacja buforów w PSRAM. |
-| `main/gps_service.c` | Odbiór UART1 i parser GNSS w osobnym zadaniu. |
-| `main/status_led.c` | Sterowanie WS2812B przez RMT. |
-| `main/core/wardrive.*` | AP, obserwacje, tryby, agregaty i kolejka. |
-| `main/core/nmea.*` | Walidacja NMEA, synchronizacja zdań i snapshot fixa. |
-| `main/core/wire.*`, `delivery.*` | Ramkowanie, CRC, ACK i retry. |
-| `main/core/monotonic.h` | Bezpieczne porównania czasu monotonicznego. |
-| `main/core/wigle.*` | Generowanie wierszy i szablonu nagłówka WiGLE. |
-| `tests/` | Testy C/Python, mocki allocatorów i przypadki graniczne. |
-| `tools/` | Encoder protokołu, diagnostyka i testy fizycznego urządzenia. |
-| `docs/` | Architektura, kontrakt FAP, instrukcje i raporty. |
-| `artifacts/` | Raporty testów JSON, bez danych wykrytych sieci i pozycji. |
+| `main/app_main.c` | Commands, sessions, scans, and UART0 transport coordination. |
+| `main/ap_memory.c` | One-time allocation of bounded PSRAM buffers. |
+| `main/gps_service.c` | UART1 reception and GNSS parsing in an independent task. |
+| `main/status_led.c` | WS2812B control through RMT. |
+| `main/core/wardrive.*` | APs, observations, modes, aggregates, and the queue. |
+| `main/core/nmea.*` | NMEA validation, sentence synchronization, and fix snapshots. |
+| `main/core/wire.*`, `delivery.*` | Framing, CRC, ACK handling, and retries. |
+| `main/core/monotonic.h` | Safe monotonic time comparisons. |
+| `main/core/wigle.*` | WiGLE row generation and the metadata header template. |
+| `tests/` | C/Python tests, allocator mocks, and boundary cases. |
+| `tools/` | Protocol encoder, diagnostics, and physical device tests. |
+| `docs/` | Architecture, FAP contract, guides, and reports. |
+| `artifacts/` | JSON test summaries without discovered network or location data. |
 
-`build/`, `build-host/`, lokalny `sdkconfig`, cache Pythona i ustawienia edytora
-są pomijane przez Git. Wspólne ustawienia sprzętu są w `sdkconfig.defaults`.
+Git excludes `build/`, `build-host/`, the local `sdkconfig`, Python caches, and
+editor settings. Shared hardware defaults are in `sdkconfig.defaults`.
 
-## 4. Budowanie i wgrywanie
+## 4. Building and flashing
 
-Wymagane: **ESP-IDF 6.0.0**, toolchain ESP32-C5 i **CMake ≥3.22**.
-Nie ma dodatkowych bibliotek firmware spoza ESP-IDF. Zainstaluj narzędzia SDK,
-a następnie aktywuj jego środowisko:
+Requirements: **ESP-IDF 6.0.0**, the ESP32-C5 toolchain, and **CMake ≥3.22**.
+The firmware uses components supplied with ESP-IDF. Install the SDK tools and
+activate the environment:
 
 ```sh
-. /sciezka/do/esp-idf/export.sh
+. /path/to/esp-idf/export.sh
 idf.py set-target esp32c5
 idf.py menuconfig
 idf.py build
 ```
 
-`set-target` stosuj przy pierwszej konfiguracji lub zmianie układu; może odtworzyć
-lokalny `sdkconfig`. Sprawdź w menu konfigurację modułu N8R8, flash 8 MiB,
-Quad PSRAM 40 MHz, GPIO i kraj używania radia. Testowany obraz używa flash DIO
-80 MHz; poprawne ustawienia dla bieżącej kompilacji są w `build/flasher_args.json`.
+Use `set-target` for initial setup or a target change; it may recreate the local
+`sdkconfig`. In the configuration menu, check the N8R8 module settings, 8 MiB flash,
+Quad PSRAM at 40 MHz, GPIO assignments, and deployment country. The tested image
+uses DIO flash at 80 MHz. The current build's flashing parameters are recorded in
+`build/flasher_args.json`.
 
-Budowanie tworzy:
+Build outputs:
 
 ```text
 build/feberis_wardriver.bin
@@ -92,164 +94,173 @@ build/partition_table/partition-table.bin
 build/flasher_args.json
 ```
 
-Sprawdzony przykład dla USB–UART Flippera w macOS:
+Tested flashing example for the Flipper USB–UART bridge on macOS:
 
 ```sh
 idf.py -p /dev/cu.usbmodemflip_Tutel1 -b 460800 flash
 ```
 
-Zastąp port aktualnym portem mostka. Nie uruchamiaj równocześnie FAP ani monitora
-szeregowego. Używaj `idf.py flash` lub offsetów wygenerowanych przez daną kompilację;
-sam obraz aplikacji nie zastępuje bootloadera i tablicy partycji. Zapis nie wymaga
-kasowania całej pamięci flash i NVS.
+Replace the port with your bridge's current device path. Do not run the FAP
+application or a serial monitor concurrently. Use `idf.py flash` or the offsets
+generated by that build: the application image alone does not replace the
+bootloader and partition table. Flashing does not require erasing the entire flash
+or NVS.
 
-Nie ma tutaj manifestu ani toolchaina aplikacji FAP. Instrukcję budowania tej
-aplikacji należy utrzymywać w jej osobnym repozytorium.
+The FAP manifest and toolchain are maintained in the separate application
+repository, along with its build instructions.
 
-## 5. Konfiguracja
+## 5. Configuration
 
-### Ustawienia kompilacji
+### Build settings
 
-`idf.py menuconfig` → **Feberis Pro**:
+Open `idf.py menuconfig` → **Feberis Pro**:
 
-| Ustawienie | Domyślne | Znaczenie |
+| Setting | Default | Meaning |
 | --- | --- | --- |
-| `FEB_MAX_APS` | 128 | Maksymalna liczba pobranych wyników jednego skanu; 16..512. |
-| `FEB_AP_CAPACITY` | 10000 | Różne BSSID w jednej sesji; 64..12000. |
-| `FEB_OBSERVATION_CAPACITY` | 2048 | Oczekujące obserwacje w PSRAM; 32..8192. |
-| `FEB_COUNTRY` | PL | Regulacyjny wybór kanałów dla miejsca używania. |
-| `FEB_FLIPPER_BAUD` | 115200 | Początkowy baud UART0. |
-| `FEB_GPS_BAUD` | 115200 | Baud odbiornika GNSS, który musi być zgodnie ustawiony. |
+| `FEB_MAX_APS` | 128 | Maximum results retrieved from one scan; 16..512. |
+| `FEB_AP_CAPACITY` | 10000 | Distinct BSSIDs per session; 64..12000. |
+| `FEB_OBSERVATION_CAPACITY` | 2048 | Pending observations in PSRAM; 32..8192. |
+| `FEB_COUNTRY` | PL | Regulatory channel selection for the deployment location. |
+| `FEB_FLIPPER_BAUD` | 115200 | Initial UART0 baud rate. |
+| `FEB_GPS_BAUD` | 115200 | GNSS baud rate, which must match the receiver. |
 
-Limit 128 wyników skanu i limit 10 000 AP sesji są niezależne. ESP-IDF zwraca
-wyniki uporządkowane według RSSI; pominięcia ponad limit partii zwiększają
-`truncated`. Pełna tabela sesji wywołuje `AP_TABLE_FULL` i zatrzymanie sesji.
+The 128-result scan limit and the 10,000-AP session limit are independent.
+ESP-IDF returns results ordered by RSSI; results omitted by the scan buffer limit
+increase `truncated`. A full session table raises `AP_TABLE_FULL` and stops the
+session.
 
-PSRAM jest inicjalizowana i testowana przy starcie. Wybrano
-`SPIRAM_USE_CAPS_ALLOC`; duże bufory korzystają jawnie z `MALLOC_CAP_SPIRAM`.
-Zwykłe alokacje, bufory UART/GPS i stosy pozostają w pamięci wewnętrznej.
-Przy braku PSRAM lub błędzie alokacji diagnostyka UART pozostaje dostępna,
-a `START_SCAN` zwraca `AP_MEMORY_UNAVAILABLE`. Nie ma cichej redukcji limitu AP.
-Awaria sprzętowego testu pamięci może zatrzymać uruchamianie w ESP-IDF.
+PSRAM is initialized and tested at startup. With `SPIRAM_USE_CAPS_ALLOC`, the large
+buffers are explicitly allocated using `MALLOC_CAP_SPIRAM`. Ordinary allocations,
+UART/GPS buffers, and task stacks remain in internal memory. If PSRAM is missing
+or allocation fails, UART diagnostics remain available and `START_SCAN` returns
+`AP_MEMORY_UNAVAILABLE`. Capacity is never reduced silently. A failed hardware
+memory test may stop startup inside ESP-IDF.
 
-### Ustawienia w NVS
+### NVS settings
 
-`GET_CONFIG` zwraca, a `SET_CONFIG` przyjmuje pełne 13 pól:
+`GET_CONFIG` returns, and `SET_CONFIG` accepts, the complete set of 13 fields:
 
 ```text
 version mode band active dwell_ms min_distance_m rssi_delta_db max_gap_ms
 min_gap_ms gps_max_age_ms gps_max_hdop_x10 full_gap_ms baud
 ```
 
-Wartości początkowe:
+Initial values:
 
 ```text
 1 0 0 0 120 15 6 30000 2000 3000 50 2000 115200
 ```
 
-`mode`: 0 SMART, 1 FULL, 2 UNIQUE. `band`: 0 BOTH, 1 2,4 GHz, 2 5 GHz.
-`active=0` oznacza pasywne skanowanie; tryb aktywny wymaga jawnej zmiany.
-HDOP jest podawane jako wartość ×10. Obsługiwane baudrates: 115200, 460800 i 921600.
+`mode`: 0 SMART, 1 FULL, 2 UNIQUE. `band`: 0 BOTH, 1 2.4 GHz, 2 5 GHz.
+`active=0` selects passive scanning; active scanning requires an explicit change.
+HDOP is expressed as a value multiplied by 10. Supported baud rates are 115200,
+460800, and 921600.
 
-Zmiany wykonuj pomiędzy partiami: `PAUSE_SCAN`, oczekiwanie na zakończenie partii,
-`SET_CONFIG`, `RESUME_SCAN`. Zmiana trybu zachowuje baseline i statystyki.
-Baud można zmienić poza sesją, z pustą kolejką. Odpowiedź OK przychodzi ze starą
-prędkością; potem odbiornik przełącza UART i ponawia HELLO/PING w razie timeoutu.
-Zakresy i dokładny przebieg opisuje [kontrakt protokołu](FLIPPER_INTEGRATION.md).
+Change settings between batches: send `PAUSE_SCAN`, wait for the current batch to
+finish, apply `SET_CONFIG`, then send `RESUME_SCAN`. A mode change preserves
+baselines and statistics. Baud rate changes require a stopped session and an empty
+queue. The OK response uses the old rate; the receiver then switches rates and
+retries HELLO/PING if necessary. Valid ranges and the complete sequence are in the
+[protocol contract](FLIPPER_INTEGRATION.md) (Polish).
 
-## 6. Sesja i tryby pracy
+## 6. Sessions and recording modes
 
-Po restarcie radio czeka na `START_SCAN`. GNSS działa także bez aktywnej sesji.
-Aplikacja Flippera przygotowuje miejsce zapisu, uzgadnia `HELLO 2`, odczytuje
-`GET_INFO`, `GET_MEMORY`, `GET_CONFIG`, a następnie uruchamia sesję.
+After a restart, the radio waits for `START_SCAN`. GNSS runs even without an active
+session. The Flipper application prepares storage, negotiates `HELLO 2`, reads
+`GET_INFO`, `GET_MEMORY`, and `GET_CONFIG`, and then starts the session.
 
-| Operacja | Zachowanie |
+| Operation | Behavior |
 | --- | --- |
-| `START_SCAN interval_ms` | Nowa sesja, gdy poprzednia została opróżniona; 1000..60000 ms. |
-| `PAUSE_SCAN` | Kończy przetwarzanie bieżącego skanu i blokuje następne. |
-| `RESUME_SCAN` | Wznawia tę samą sesję. |
-| `STOP_SCAN` | Zatrzymuje kolejne skany, zachowuje kolejkę i przetwarza pobraną partię. |
-| `GET_AP slot` | Odczyt agregatu AP; zajęte sloty to 0..unique_aps-1. |
-| `GET_STATS` | Statystyki sesji; wariant TOTAL obejmuje bieżące uruchomienie. |
+| `START_SCAN interval_ms` | Start a session once the previous session is drained; 1000..60000 ms. |
+| `PAUSE_SCAN` | Finish processing the current scan and prevent subsequent scans. |
+| `RESUME_SCAN` | Resume the same session. |
+| `STOP_SCAN` | Stop subsequent scans, retain the queue, and process the retrieved batch. |
+| `GET_AP slot` | Read AP aggregates; occupied slots are 0..unique_aps-1. |
+| `GET_STATS` | Read session statistics; TOTAL covers the current device uptime. |
 
-Po STOP odbiornik nadal zapisuje i potwierdza rekordy. Koniec sesji na karcie
-następuje po opróżnieniu kolejki i partii, z `scanning=0`, `queued=0` oraz
-`STATUS.phase=IDLE`. Następnie pobiera końcowe AP i statystyki.
+After STOP, the receiver continues storing and acknowledging records. Close the
+session on the card only after the queue and batch are drained, with
+`scanning=0`, `queued=0`, and `STATUS.phase=IDLE`. Retrieve final AP aggregates and
+statistics before starting another session.
 
 ### SMART
 
-Każda detekcja aktualizuje agregaty, także jeśli nie powstaje obserwacja.
-Porównania wykonywane są do ostatniej **zaakceptowanej obserwacji** danego BSSID.
-Zapis następuje dla:
+Every detection updates the aggregates, even when no observation is recorded.
+Comparisons use that BSSID's last **accepted observation**. A new observation is
+recorded when:
 
-- pierwszego wykrycia;
-- przemieszczenia co najmniej 15 m;
-- zmiany RSSI co najmniej 6 dB;
-- upływu 30 s od ostatniego zapisu;
-- zmiany kanału, pasma, zabezpieczeń, SSID lub metadanych PHY;
-- uzyskania ważnego GPS po wcześniejszym zapisanym pomiarze bez lokalizacji.
+- the BSSID is first discovered;
+- movement reaches at least 15 m;
+- RSSI changes by at least 6 dB;
+- 30 seconds have elapsed since the last recorded observation;
+- the channel, band, security, SSID, or PHY metadata changes;
+- a valid GPS fix becomes available after an observation without a location.
 
-Zwykłe aktualizacje mają minimalny odstęp 2 s. Pierwsze wykrycie, metadane i
-uzupełnienie GPS omijają tę blokadę. Przy odwróceniu kierunku zmiany RSSI
-histereza wymaga dodatkowych 2 dB. Progi można zmieniać przez konfigurację.
+Ordinary updates have a minimum interval of 2 seconds. First discovery, metadata
+changes, and GPS completion bypass this interval. When the direction of an RSSI
+change reverses, hysteresis requires an additional 2 dB. Thresholds are configurable.
 
-FULL zapisuje wyniki zgodnie z `full_gap_ms`; 0 oznacza wszystkie pobrane wyniki.
-UNIQUE zapisuje BSSID raz na sesję, nadal aktualizując agregaty AP.
+FULL records results according to `full_gap_ms`; 0 records every retrieved result.
+UNIQUE records each BSSID once per session while continuing to update aggregates.
 
-## 7. Dane GPS i Wi-Fi
+## 7. GPS and Wi-Fi data
 
-Parser sprawdza checksumy NMEA, składnię liczb, datę, format współrzędnych,
-status fixa i zgodność RMC/GGA. Zdania mogą różnić się najwyżej o sekundę;
-geograficznie sprzeczne pozycje są odrzucane. Domyślnie oba zdania muszą być
-nie starsze niż 3000 ms, a HDOP nie większe niż 5.
+The parser checks NMEA checksums, numeric syntax, dates, coordinate formats, fix
+status, and RMC/GGA consistency. Sentences may differ by at most one second;
+geographically inconsistent positions are rejected. By default, both sentences
+must be no older than 3000 ms and HDOP must be at most 5.
 
-Brak poprawnego fixa nie zatrzymuje Wi-Fi. Obserwacja ma nieważną pozycję i NAN,
-a nie współrzędne 0,0 lub starą lokalizację. Rzeczywisty fix w 0,0 jest poprawny.
-HDOP nie jest zamieniany na metry accuracy. Brak opcjonalnej prędkości, kursu,
-wysokości lub accuracy jest oznaczany jako brak danych.
+An invalid fix does not stop Wi-Fi scanning. Observations carry an invalid position
+and NAN rather than a fabricated 0,0 or a stale location. A genuine fix at 0,0 is
+valid. HDOP is not converted into accuracy in meters. Missing optional speed,
+course, altitude, or accuracy is represented as unavailable data.
 
-Snapshot pozycji jest zamrożony przy zakończeniu skanu. Standardowe API wyników
-nie udostępnia timestampu odbioru każdego beacona; podczas jazdy pozostaje błąd
-wynikający ze skanowania kolejnych kanałów. Jeden interfejs radiowy obsługuje oba
-pasma kolejno. Najsilniejszy punkt pomiarowy nie jest lokalizacją routera.
+The position snapshot is frozen at scan completion. The standard scan result API
+does not provide a reception timestamp for each beacon. Movement therefore
+introduces an error related to scanning successive channels. The single radio
+scans both bands sequentially. The strongest measurement point is not the router's
+physical location.
 
-Wewnętrzny model obsługuje SSID z jawną długością i dowolnymi bajtami.
-API skanowania IDF udostępnia SSID zakończony NUL, więc osadzony NUL może uciąć
-nazwę w adapterze. BSSID pozostaje kluczem identyfikacyjnym.
+The internal model supports arbitrary SSID bytes with an explicit length. The
+IDF scan API provides a NUL-terminated SSID, so an embedded NUL can truncate the
+name in the adapter. The BSSID remains the identity key.
 
-## 8. UART, trwałość i błędy
+## 8. UART, durability, and errors
 
-Format ramki ASCII:
+ASCII frame format:
 
 ```text
 FBR1<TAB>request_id<TAB>type<TAB>fields*CRC16<LF>
 ```
 
-CRC-16/CCITT-FALSE, bufor 1536 B z NUL, maksymalnie 48 pól. SSID i CSV są kodowane
-hex. `request_id=0` oznacza zdarzenie. CRC i ograniczony alfabet umożliwiają
-odrzucenie uszkodzonej ramki oraz resynchronizację na LF.
+The protocol uses CRC-16/CCITT-FALSE, a 1536-byte buffer including NUL, and at most
+48 fields. SSIDs and CSV rows are hex-encoded. `request_id=0` marks an event.
+CRC and the restricted alphabet allow damaged frames to be rejected and the parser
+to resynchronize at LF.
 
-ESP wysyła jedną niepotwierdzoną obserwację naraz. Odbiornik najpierw trwale
-zapisuje `(boot, session, sequence)`, potem wysyła ACK. Timeout wynosi 2000 ms,
-limit to trzy retransmisje. Retransmisja jest identyczna bajtowo i nie może
-powodować ponownego dopisania rekordu po stronie odbiorcy.
+The ESP sends one unacknowledged observation at a time. The receiver durably stores
+`(boot, session, sequence)` before sending ACK. The timeout is 2000 ms, with at most
+three retransmissions. A retransmission is byte-for-byte identical and must not
+append the same record again on the receiver.
 
-Po timeout kolejka pozostaje w RAM. `RESUME_LINK` uzgadnia checkpoint i może
-potwierdzić tylko ostatni zatwierdzony rekord lub faktycznie wysłaną głowę kolejki.
-Pełne bufory wstrzymują kolejne skany. `NACK STORAGE` zatrzymuje transport i skany
-przy błędzie odbiorcy. Po naprawie wymagane są uzgodnienie checkpointu i wznowienie.
+After timeout, the queue remains in RAM. `RESUME_LINK` reconciles the checkpoint and
+can confirm only the last committed record or the queue head that was actually
+transmitted. Full buffers prevent subsequent scans. `NACK STORAGE` suspends
+transport and scanning after a receiver storage error. Reconcile the checkpoint
+and explicitly resume after storage is repaired.
 
-PSRAM i statystyki TOTAL nie są trwałe. Restart zmienia boot, czyści sesję i
-niepotwierdzone bufory; NVS przechowuje konfigurację. Nie wdrożono dziennika
-obserwacji we flash ESP32. Nie należy kasować NVS automatycznie po błędzie.
+PSRAM and TOTAL statistics are volatile. Restarting changes the boot identifier
+and clears the session and pending buffers; NVS stores configuration. There is no
+observation journal in ESP32 flash. NVS must not be automatically erased after an
+error.
 
-Stare `HELLO` bez argumentu 2 wybiera format legacy; tam STOP anuluje wyniki.
-Nowa aplikacja powinna używać revision 2. Szczegóły każdej wiadomości i błędu:
-[FLIPPER_INTEGRATION.md](FLIPPER_INTEGRATION.md).
+`HELLO` without argument 2 selects the legacy format, where STOP discards results.
+New applications should use revision 2. Full message and error definitions are in
+[FLIPPER_INTEGRATION.md](FLIPPER_INTEGRATION.md) (Polish).
 
-## 9. Pliki i WiGLE
+## 9. Files and WiGLE
 
-Docelową strukturę na microSD tworzy aplikacja FAP:
+The FAP application is responsible for this microSD layout:
 
 ```text
 /ext/apps_data/wardriving/
@@ -264,29 +275,30 @@ Docelową strukturę na microSD tworzy aplikacja FAP:
     logs/errors.log
 ```
 
-Dziennik zdarzeń jest źródłem prawdy dla checkpointu, odzyskania częściowego
-zapisu i późniejszego generowania CSV. Należy sprawdzać pełny zapis i sync przed
-ACK, usuwać niepełny ogon przy odzyskiwaniu i obsługiwać brak/pełną kartę.
-To wymagania osobnego projektu Flippera.
+The event journal is the source of truth for checkpoints, partial-write recovery,
+and subsequent CSV generation. Check full writes and synchronization before ACK,
+remove incomplete tails during recovery, and handle missing or full cards. These
+are requirements for the separate Flipper project.
 
-WiGLE ma 11 standardowych kolumn i brand **Sapsan** w nagłówku metadanych.
-Eksportowane są tylko pomiary z prawidłowym UTC i lokalizacją. Nie dodaje się
-niestandardowych kolumn. Bez accuracy w metrach pole jest puste. SSID jest
-cytowane i bezpiecznie escapowane; oryginalne bajty zachowuje `ssid_hex`.
-Przykłady: [examples](examples).
+WiGLE uses 11 standard columns and the brand **Sapsan** in its metadata header.
+Export only observations with valid UTC and location. Do not add custom columns.
+Leave accuracy empty when no accuracy estimate in meters is available. SSIDs are
+quoted and safely escaped; `ssid_hex` preserves the original bytes.
+See the [example files](examples).
 
-## 10. Diagnostyka i testy
+## 10. Diagnostics and testing
 
-Dioda: niebieska — bezczynność; bursztynowa — praca bez fixa;
-zielona — praca z fixem; czerwona — błąd. Zielony kolor nie potwierdza zapisu SD.
-`GET_MEMORY` pokazuje osobno SRAM i PSRAM oraz limity i zajętość buforów.
+LED states: blue — idle; amber — running without a fix; green — running with a
+fix; red — error. A green LED does not confirm a successful SD write.
+`GET_MEMORY` reports SRAM and PSRAM separately, including buffer capacities and
+occupancy.
 
-Wynik docelowej kompilacji: AP 488 B, observation 168 B, engine 376 B.
-Domyślne bufory PSRAM rezerwują **5 304 064 B**; indeks zawiera 20 000 wpisów,
-więc jego zapełnienie nie przekracza 50%. Weryfikacja sprzętowa potwierdziła 8 MiB
-PSRAM i około 3 MiB wolnej PSRAM po alokacji.
+Target build sizes: AP 488 B, observation 168 B, engine 376 B. Default PSRAM buffers
+reserve **5,304,064 B**. The hash index contains 20,000 entries and its load factor
+never exceeds 50%. Hardware checks confirmed 8 MiB PSRAM and approximately 3 MiB
+free PSRAM after allocation.
 
-Testy hosta:
+Host tests:
 
 ```sh
 cmake -S tests -B build-host -DFEB_SANITIZERS=ON
@@ -294,56 +306,56 @@ cmake --build build-host
 ctest --test-dir build-host --output-on-failure
 ```
 
-Odczyt stanu urządzenia, z pyserial w środowisku SDK:
+Read device status using pyserial in the SDK environment:
 
 ```sh
 python tools/device_info.py /dev/cu.usbmodemflip_Tutel1
 ```
 
-Narzędzie nie uruchamia skanów ani nie pulsuje resetem; sam mostek może zresetować
-ESP przy otwieraniu portu. Opcja `--boot-log` jawnie resetuje ESP i wypisuje log,
-który może zawierać pozycję GPS.
+The tool does not start scans or pulse reset, although the bridge itself may reset
+the ESP when the port opens. The `--boot-log` option explicitly resets the ESP and
+prints startup output, which may contain a GPS position.
 
-Próby akceptacyjne zmieniają chwilowo konfigurację, wykonują skany pasywne,
-restart z kolejką i przywracają ustawienia. Odbiornik PC używa tymczasowego journal
-z fsync przed ACK. Nie jest to test karty SD Flippera.
+Acceptance tests temporarily change settings, perform passive scans, and restart
+with queued records. They restore the settings afterward. The PC receiver uses a
+temporary journal and fsync before ACK. This does not test the Flipper's SD card.
 
 ```sh
 python tools/stress_test.py /dev/cu.usbmodemflip_Tutel1 --output /tmp/feberis-acceptance.json
 python tools/stress_test.py /dev/cu.usbmodemflip_Tutel1 --soak-cycles 12 --output /tmp/feberis-soak.json
 ```
 
-W 0.3.1 przeszło 7/7 zestawów hosta, 15/15 scenariuszy sprzętowych i 12 cykli
-próby pamięci. Host sprawdza również 10 000 AP, kolejkę 2048, limity ramek,
-nieprawidłową konfigurację, skraje czasu, NMEA i CSV. Pełna macierz:
-[VALIDATION.md](VALIDATION.md). Rzeczywiste wyniki:
-[HARDWARE_TEST_2026-11-23_ACCEPTANCE.md](HARDWARE_TEST_2026-11-23_ACCEPTANCE.md).
-Archiwalne `tools/hardware_test.py` dotyczy kontraktu 0.1.0.
+Version 0.3.1 passed 7/7 host suites, 15/15 hardware scenarios, and a 12-cycle memory
+check. Host tests also cover 10,000 APs, the 2,048-record queue, framing limits,
+invalid configuration, extreme timestamps, NMEA, and CSV. The full matrix is in
+[VALIDATION.md](VALIDATION.md) (Polish). Physical device results are in
+[HARDWARE_TEST_2026-11-23_ACCEPTANCE.md](HARDWARE_TEST_2026-11-23_ACCEPTANCE.md)
+(Polish). The archived `tools/hardware_test.py` targets protocol version 0.1.0.
 
-## 11. Granice potwierdzonego działania
+## 11. Validation boundaries
 
-Nie wykonano jeszcze rzeczywistych testów GUI/FAP i zapisu microSD, importu na
-serwerze WiGLE, jazdy z GNSS ani wielogodzinnej pracy. Pełną tabelę AP i kolejkę
-sprawdzono modelowo na hoście; radio widziało kilkanaście sieci. Próba 12 cykli
-wykazała stałą ilość wolnej pamięci po opróżnianiu partii, ale nie zastępuje
-wielogodzinnego obciążenia. Zawieszenia sterownika Wi-Fi i awarii NVS nie
-wstrzykiwano fizycznie.
+Actual GUI/FAP and microSD storage tests, WiGLE server import, GNSS testing while
+driving, and extended operation remain to be verified. A full AP table and queue
+were exercised with the host model; the physical radio saw roughly a dozen
+networks. The 12-cycle check showed constant free memory after draining batches,
+but does not replace extended load testing. Wi-Fi driver hangs and NVS failures
+were not physically injected.
 
-## 12. Rozwijanie projektu
+## 12. Contributing
 
-Stosuj C, cztery spacje, `snake_case`, typy `_t` i `.clang-format`.
-Moduły `core/` pozostają niezależne od ESP-IDF. Pamięć i bufory muszą mieć jawne
-limity; nowe reguły zapisu porównują do zaakceptowanej obserwacji. Zmiany protokołu
-muszą zostać opisane dla obu końców w dokumencie integracji FAP.
+Use C, four-space indentation, `snake_case`, `_t` types, and `.clang-format`.
+Keep `core/` independent of ESP-IDF. Memory and buffers need explicit limits;
+new recording rules compare against the last accepted observation. Protocol
+changes must be documented for both endpoints in the FAP integration contract.
 
-Nie dodawaj do repozytorium prywatnych kluczy, tokenów, lokalnego `sdkconfig`,
-ustawień edytora ani rzeczywistych dzienników z SSID/BSSID i pozycjami.
-Raporty testów zawierają wyłącznie podsumowania; pliki `docs/examples/` są syntetyczne.
+Do not commit private keys, tokens, the local `sdkconfig`, editor settings, or
+actual journals containing SSIDs, BSSIDs, and positions. Test reports contain
+summaries only; files in `docs/examples/` are synthetic.
 
-## Źródła i dokumenty uzupełniające
+## References and supporting documents
 
-- [Dokumentacja modułu N8R8](https://documentation.espressif.com/esp32-c5-wroom-1_wroom-1u_datasheet_en.pdf)
-- [ESP-IDF 6.0: Wi-Fi C5](https://docs.espressif.com/projects/esp-idf/en/v6.0/esp32c5/api-reference/network/esp_wifi.html)
-- [ESP-IDF 6.0: PSRAM C5](https://docs.espressif.com/projects/esp-idf/en/v6.0/esp32c5/api-guides/external-ram.html)
-- [Architektura i wcześniejszy audyt](ARCHITECTURE.md)
-- [Kontrakt UART i zadanie dla projektu Flippera](FLIPPER_INTEGRATION.md)
+- [N8R8 module datasheet](https://documentation.espressif.com/esp32-c5-wroom-1_wroom-1u_datasheet_en.pdf)
+- [ESP-IDF 6.0: C5 Wi-Fi](https://docs.espressif.com/projects/esp-idf/en/v6.0/esp32c5/api-reference/network/esp_wifi.html)
+- [ESP-IDF 6.0: C5 PSRAM](https://docs.espressif.com/projects/esp-idf/en/v6.0/esp32c5/api-guides/external-ram.html)
+- [Architecture and initial audit](ARCHITECTURE.md) — Polish.
+- [UART contract and Flipper project handoff](FLIPPER_INTEGRATION.md) — Polish.
