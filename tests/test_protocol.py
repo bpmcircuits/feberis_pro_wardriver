@@ -45,6 +45,14 @@ class ProtocolTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 encode(['FBR1', '1', bad])
 
+    def test_utf8_csv_roundtrip(self):
+        data = subprocess.check_output([CORE_EXECUTABLE, '--csv-utf8'])
+        _, rest = data.decode('utf-8', errors='strict').split('\n', 1)
+        rows = list(csv.DictReader(io.StringIO(rest)))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(len(rows[0]), 11)
+        self.assertEqual(rows[0]['SSID'], 'Łódź,"网📡"')
+
 
 if __name__ == '__main__':
     unittest.main()

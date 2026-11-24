@@ -1,0 +1,76 @@
+{
+  "test": "physical_stop_metrics",
+  "flipper_sd_tested": false,
+  "local_binary_sha256": "66c16aab53ab2e33716c0e2533713d68f3bcc24121d7d39260efd51a917076b5",
+  "cases": [
+    {
+      "before": {
+        "radio_ms": 1694,
+        "ingest_cpu_us": 2025
+      },
+      "after": {
+        "radio_ms": 1694,
+        "ingest_cpu_us": 2025
+      }
+    },
+    {
+      "before": {
+        "radio_ms": 1693,
+        "ingest_cpu_us": 2271
+      },
+      "after": {
+        "radio_ms": 1693,
+        "ingest_cpu_us": 2271
+      }
+    },
+    {
+      "before": {
+        "radio_ms": 1694,
+        "ingest_cpu_us": 2396
+      },
+      "after": {
+        "radio_ms": 1694,
+        "ingest_cpu_us": 2396
+      }
+    }
+  ],
+  "stats": {
+    "total_detections": 11,
+    "unique_aps": 11,
+    "observations_saved": 11,
+    "observations_filtered": 0,
+    "gps_valid_observations": 0,
+    "gps_invalid_observations": 11,
+    "wifi_2g_aps": 11,
+    "wifi_5g_aps": 0,
+    "open_aps": 0,
+    "secured_aps": 11,
+    "scan_cycles": 1,
+    "scan_errors": 0,
+    "uart_retransmissions": 0,
+    "uart_dropped_frames": 0,
+    "storage_errors": 0,
+    "queue_overflows": 0,
+    "table_overflows": 0,
+    "queued": 0,
+    "committed": 26,
+    "free_heap": 2872584,
+    "minimum_free_heap": 2870028
+  },
+  "csv_rows_checked": 0,
+  "crc_errors": 0,
+  "original_config_restored": true,
+  "final_state": {
+    "boot": 135566057,
+    "session": 3,
+    "running": 0,
+    "paused": 0,
+    "scanning": 0,
+    "link_wait": 0,
+    "queued": 0,
+    "last_sequence": 26,
+    "committed": 26,
+    "elapsed_ms": 2198
+  },
+  "status": "passed"
+}

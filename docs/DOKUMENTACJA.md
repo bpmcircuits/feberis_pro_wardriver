@@ -346,7 +346,14 @@ are requirements for the separate Flipper project.
 WiGLE uses 11 standard columns and the brand **Sapsan** in its metadata header.
 Export only observations with valid UTC and location. Do not add custom columns.
 Leave accuracy empty when no accuracy estimate in meters is available. SSIDs are
-quoted and safely escaped; `ssid_hex` preserves the original bytes.
+quoted, with quotes doubled and valid UTF-8 preserved. Invalid UTF-8 bytes,
+ASCII controls, DEL, and backslash use `\xNN` escapes. Empty and all-NUL SSIDs
+produce an empty WiGLE name; embedded NUL in other names is escaped.
+`ssid_hex` preserves the original bytes, including all-NUL hidden names.
+All defined ESP-IDF 6.0 authentication modes are mapped, including WAPI, DPP,
+and WPA/WPA3 Enterprise variants. Reserved and unknown values still suppress
+WiGLE export rather than guessing security. Existing UNKNOWN journal entries
+cannot be reclassified without new evidence.
 See the [example files](examples).
 
 ## 10. Diagnostics and testing

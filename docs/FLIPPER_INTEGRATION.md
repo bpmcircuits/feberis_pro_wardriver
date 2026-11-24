@@ -123,8 +123,12 @@ obserwacji są wtedy `nan`. Nie zamieniaj ich na 0,0. UTC może być dostępne t
 bez poprawnej geolokalizacji, jeśli RMC zawiera świeży czas. Gdy brak UTC, zachowaj
 czas monotoniczny i brak czasu UTC w dzienniku; nie wstawiaj zegara PC jako GPS UTC.
 Maska PHY: bit0 11b, bit1 11g, bit2 11n, bit3 11a, bit4 11ac, bit5 11ax.
-Auth używa opisów `[ESS]`, `[WEP][ESS]`, WPA/WPA2/WPA3/OWE; nierozpoznane
-wartości `[UNKNOWN][ESS]`, bez zgadywania zabezpieczeń.
+Auth używa opisów `[ESS]`, `[WEP][ESS]`, WPA/WPA2/WPA3/OWE oraz
+`[WAPI-PSK][ESS]`, `[DPP][ESS]`, `[WPA-EAP][ESS]`, `[WPA3-EAP][ESS]`,
+`[WPA2-EAP][WPA3-EAP][ESS]` i `[WPA3-EAP-SUITE-B-192][ESS]`.
+Nierozpoznane wartości (również zarezerwowane DUMMY w SDK) pozostają
+`[UNKNOWN][ESS]`, bez zgadywania zabezpieczeń. Aplikacja zachowuje opis auth
+przesłany przez firmware, także gdy nie zna jego etykiety.
 
 W 0.4.0 pozycja i RSSI pochodzą z najsilniejszej odebranej ramki beacon/probe
 response, z timestampem callbacku odbiorczego i historycznym fixem GNSS dostępnym
@@ -316,7 +320,13 @@ MAC,SSID,AuthMode,FirstSeen,Channel,RSSI,CurrentLatitude,CurrentLongitude,Altitu
 
 Pole brand w metadanych WiGLE musi mieć dokładnie wartość **Sapsan**.
 Bez BOM, LF, 11 kolumn, żadnych własnych kolumn. FirstSeen jest czasem obserwacji.
-SSID cytowane, cudzysłów podwajany, nietekstowe bajty/backslash jako `\xNN`.
+SSID cytowane, cudzysłów podwajany. Poprawne sekwencje UTF-8 zachowują oryginalne
+bajty; błędne/niepełne sekwencje, sterujące bajty ASCII, DEL i backslash są
+zapisywane jako `\xNN`. SSID puste lub złożone wyłącznie z NUL daje pustą nazwę
+w WiGLE. Osadzony NUL w pozostałych nazwach pozostaje `\x00`.
+`ssid_hex` w OBSERVATION, dzienniku i GET_AP zawsze zachowuje oryginalne bajty.
+Dotyczy to również eksportu odtwarzanego przez aplikację z dziennika; przy
+bezpośrednim zapisie `csv_hex` aplikacja zapisuje zdekodowane bajty bez zmian.
 Brak rzeczywistej accuracy → puste AccuracyMeters, nigdy HDOP×5. Nieznana wysokość
 → puste AltitudeMeters. Rzeczywisty fix w punkcie 0,0 jest dozwolony; zabronione
 jest wstawianie 0,0 jako zamiennika braku fixa. Obsługę pustej accuracy przez
@@ -438,7 +448,9 @@ main_stack_free scan_capacity
   gap, and any queue pressure. `period_ms` is start-to-start. Pause/resume resets
   the timing anchor so a deliberate pause does not inflate the next measured gap.
   First-cycle/unfinished fields may be zero. `ingest_cpu_us` accumulates actual
-  slice wall time; `ingest_ms` also includes waiting and scheduling.
+  slice wall time; `ingest_ms` also includes waiting and scheduling. A STOP or
+  failed scan preserves the previous batch's `radio_ms` and `ingest_cpu_us`;
+  these are replaced only after successful retrieval of the next scan results.
 - `captured`, `dropped`, and `malformed` count received valid metadata frames,
   queue drops, and rejected beacon/probe-response bodies. The cache has
   `4 * scan_capacity` slots, with at most 50% occupied per scan. `cache_overflows`

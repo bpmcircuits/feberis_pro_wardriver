@@ -146,6 +146,44 @@ static void test_csv(void) {
     memset(ap.ssid, 0xff, 32);
     ap.ssid_length = 32;
     assert(wigle_row(&ap, &fix, row, sizeof(row)));
+    ap.ssid_length = 33;
+    assert(!wigle_row(&ap, &fix, row, sizeof(row)));
+
+    const struct {
+        uint8_t bytes[32];
+        size_t length;
+        const char *csv;
+    } cases[] = {
+        {{0}, 32, ""},
+        {{'a', 0, 'b'}, 3, "a\\x00b"},
+        {{'\\', '"', '\r', '\n', '\t'}, 5, "\\x5C\"\"\\x0D\\x0A\\x09"},
+        {{0xc5, 0x81, 0xc3, 0xb3, 'd', 0xc5, 0xba}, 7, "Łódź"},
+        {{0xe7, 0xbd, 0x91, 0xf0, 0x9f, 0x93, 0xa1}, 7, "网📡"},
+        {{0xc0, 0xaf, 0xc1, 0xbf}, 4, "\\xC0\\xAF\\xC1\\xBF"}, /* Overlong. */
+        {{0xe0, 0x9f, 0xbf}, 3, "\\xE0\\x9F\\xBF"},
+        {{0xed, 0xa0, 0x80}, 3, "\\xED\\xA0\\x80"}, /* Surrogate. */
+        {{0xf0, 0x8f, 0xbf, 0xbf}, 4, "\\xF0\\x8F\\xBF\\xBF"},
+        {{0xf4, 0x90, 0x80, 0x80}, 4, "\\xF4\\x90\\x80\\x80"}, /* > U+10FFFF. */
+        {{0x80, 0xf5, 0xff, 0xe2, 0x82}, 5, "\\x80\\xF5\\xFF\\xE2\\x82"},
+        {{0xc2, '"', 0xe2, '\n', 0xac}, 5, "\\xC2\"\"\\xE2\\x0A\\xAC"},
+        {{0xc2, 0x80, 0xdf, 0xbf, 0xe0, 0xa0, 0x80, 0xed, 0x9f, 0xbf, 0xf0, 0x90, 0x80, 0x80, 0xf4,
+          0x8f, 0xbf, 0xbf},
+         18,
+         "\xc2\x80\xdf\xbf\xe0\xa0\x80\xed\x9f\xbf\xf0\x90\x80\x80\xf4\x8f\xbf\xbf"},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        memcpy(ap.ssid, cases[i].bytes, sizeof(ap.ssid));
+        ap.ssid_length = cases[i].length;
+        ap_observation_t original = ap;
+        size_t length = wigle_row(&ap, &fix, row, sizeof(row));
+        assert(length);
+        assert(!strncmp(row + 17, ",\"", 2));
+        assert(!strncmp(row + 19, cases[i].csv, strlen(cases[i].csv)));
+        assert(!strncmp(row + 19 + strlen(cases[i].csv), "\",", 2));
+        assert(!memcmp(&ap, &original, sizeof(ap))); /* Journal bytes stay intact. */
+        assert(!wigle_row(&ap, &fix, row, length));
+        assert(wigle_row(&ap, &fix, row, length + 1) == length);
+    }
 }
 
 static void test_noise(void) {
@@ -170,9 +208,14 @@ int main(int argc, char **argv) {
         fputs(frame, stdout);
         return 0;
     }
-    if (argc == 2 && !strcmp(argv[1], "--csv")) {
+    if (argc == 2 && (!strcmp(argv[1], "--csv") || !strcmp(argv[1], "--csv-utf8"))) {
         char row[WIGLE_ROW_MAX];
         ap_observation_t ap = sample_ap();
+        if (!strcmp(argv[1], "--csv-utf8")) {
+            const char *name = "Łódź,\"网📡\"";
+            ap.ssid_length = strlen(name);
+            memcpy(ap.ssid, name, ap.ssid_length);
+        }
         gps_fix_t fix = valid_fix();
         assert(wigle_row(&ap, &fix, row, sizeof(row)));
         fputs(WIGLE_METADATA WIGLE_COLUMNS, stdout);

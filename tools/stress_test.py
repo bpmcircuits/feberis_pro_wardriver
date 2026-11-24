@@ -120,9 +120,22 @@ class Device:
             assert math.isnan(float(f[13])) and math.isnan(float(f[14]))
             assert f[19] == '-', 'CSV exported without a valid GPS fix'
         if f[19] != '-':
-            rows = list(csv.reader(io.StringIO(bytes.fromhex(f[19]).decode('ascii'))))
+            rows = list(csv.reader(io.StringIO(bytes.fromhex(f[19]).decode('utf-8'))))
             assert valid and len(rows) == 1 and len(rows[0]) == 11
             row = rows[0]
+            # Independent oracle: surrogateescape retains invalid UTF-8 bytes,
+            # while Python decodes canonical sequences to their original text.
+            expected_ssid = ''
+            if any(ssid):
+                for char in ssid.decode('utf-8', errors='surrogateescape'):
+                    code = ord(char)
+                    if 0xdc80 <= code <= 0xdcff:
+                        expected_ssid += f'\\x{code - 0xdc00:02X}'
+                    elif code < 32 or code == 127 or char == '\\':
+                        expected_ssid += f'\\x{code:02X}'
+                    else:
+                        expected_ssid += char
+            assert row[1] == expected_ssid, 'WiGLE SSID differs from observation bytes'
             assert row[0] == f[6] and row[2] == f[8] and row[3] == f[12]
             assert int(row[4]) == channel and int(row[5]) == rssi
             assert abs(float(row[6]) - float(f[13])) < 1e-7

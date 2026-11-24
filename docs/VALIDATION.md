@@ -178,6 +178,17 @@ pracy radia, zużycia heap przez zamknięte biblioteki Wi-Fi i dokładności GNS
 
 ## Obowiązkowa dalsza walidacja
 
+Regresje eksportu po analizie przejazdów z 2026-11-23: test `core` sprawdza
+zachowanie UTF-8 (2/3/4 bajty i granice zakresów), odrzucenie sekwencji overlong,
+surogatów, wartości ponad U+10FFFF oraz urwanych/błędnych sekwencji. Sprawdza też
+puste i 32-bajtowe zerowe SSID, osadzony NUL, quoting, kontrolne ASCII, backslash,
+niezmienność oryginalnych bajtów i dokładne granice bufora. `csv_and_protocol`
+dekoduje wynik jako ścisłe UTF-8 i potwierdza nazwę z polskimi znakami, CJK,
+emoji, przecinkiem i cudzysłowami niezależnym parserem CSV.
+Są to testy hostowe. Na urządzeniu pozostaje sprawdzenie nowych trybów auth,
+zachowania `ingest_cpu_us` po STOP/błędzie skanu oraz eksportu i importu WiGLE
+przez rzeczywistą aplikację Flippera.
+
 Na ESP: RF 2,4/5 GHz, kanały kraju/DFS, passive/active, ukryte SSID, praca obu UART,
 fix i prędkość w ruchu, utrata GPS, retry po błędach Wi-Fi, 3 baudrates,
 NVS po restarcie i odcięciu zasilania, minimum heap i watermark stosów, pełna tabela.

@@ -133,6 +133,18 @@ static const char *auth_name(wifi_auth_mode_t auth) {
         return "[WPA2-PSK][WPA3-SAE][ESS]";
     case WIFI_AUTH_OWE:
         return "[OWE][ESS]";
+    case WIFI_AUTH_WAPI_PSK:
+        return "[WAPI-PSK][ESS]";
+    case WIFI_AUTH_WPA3_ENT_192:
+        return "[WPA3-EAP-SUITE-B-192][ESS]";
+    case WIFI_AUTH_DPP:
+        return "[DPP][ESS]";
+    case WIFI_AUTH_WPA3_ENTERPRISE:
+        return "[WPA3-EAP][ESS]";
+    case WIFI_AUTH_WPA2_WPA3_ENTERPRISE:
+        return "[WPA2-EAP][WPA3-EAP][ESS]";
+    case WIFI_AUTH_WPA_ENTERPRISE:
+        return "[WPA-EAP][ESS]";
     default:
         return "[UNKNOWN][ESS]";
     }
@@ -535,8 +547,6 @@ static void process_scan_event(void) {
         return;
     app.scanning = false;
     app.scan_completed_ms = notice.completed_ms;
-    app.metrics.radio_ms = (uint32_t)(notice.completed_ms - app.scan_started_ms);
-    app.metrics.ingest_cpu_us = 0;
     radio_capture_drain(&engine.config);
     if (!app.running || notice.done.status != 0) {
         esp_wifi_clear_ap_list();
@@ -563,6 +573,10 @@ static void process_scan_event(void) {
         app.next_scan_ms = now_ms() + 2000;
         return;
     }
+    /* A STOP/failed scan has no ingestion batch. Retain the previous batch's
+     * diagnostics until a successful result read starts the next one. */
+    app.metrics.radio_ms = (uint32_t)(notice.completed_ms - app.scan_started_ms);
+    app.metrics.ingest_cpu_us = 0;
     ++app.cycles;
     ++engine.stats.scan_cycles;
     ++engine.lifetime.scan_cycles;
